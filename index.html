@@ -514,7 +514,7 @@
 
     <script>
         const { createApp, ref, computed, onMounted, onUnmounted, reactive, nextTick, watch } = Vue;
-        const apiKey = "AIzaSyCoPxd6hrI89c7y6ThhPfg_rcmCoNCrepE"; 
+        const apiKey = "AIzaSyCoPxd6hrI89c7y6ThhPfg_rcmCoNCre"; 
 
         createApp({
             setup() {
@@ -807,10 +807,10 @@
                 const onGlobalEnd = () => { clearTimeout(dragState.timer); dragState.isLongPressing = false; dragState.draggingId = null; window.removeEventListener('touchmove', onGlobalMove); window.removeEventListener('touchend', onGlobalEnd); window.removeEventListener('mousemove', onGlobalMove); window.removeEventListener('mouseup', onGlobalEnd); };
                 const handleTouchMove = () => {}; const handleTouchEnd = () => clearTimeout(dragState.timer);
 
-                const callGemini = async (prompt) => { try { const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) }); const d = await r.json(); return d.candidates[0].content.parts[0].text; } catch (e) { return null; } };
+                const callGemini = async (prompt) => { try { const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) }); const d = await r.json(); return d.candidates[0].content.parts[0].text; } catch (e) { return null; } };
                 const generateNotes = async () => { isAiLoading.value=true; const r = await callGemini(`簡介「${form.value.name}」100字`); if (r) form.value.notes = r; isAiLoading.value=false; };
                 const recommendShopping = async () => { isAiLoading.value=true; let r = await callGemini(`推薦3個${tripSettings.value.location}必買。JSON array: [{"name":"","image":null}]`); if(r) { try { shoppingList.value.push(...JSON.parse(r.replace(/```json/g,'').replace(/```/g,'').trim())); } catch(e){} } isAiLoading.value=false; };
-                const translateToJapanese = async () => { if (!translateInput.value) return; isTranslating.value=true; translateResult.value = ''; translateRomaji.value = ''; const res = await callGemini(`Translate to JP: "${translateInput.value}". JSON: {"ja":"","romaji":""}`); if(r) { try { const d = JSON.parse(res.replace(/```json/g,'').replace(/```/g,'').trim()); translateResult.value = d.ja; translateRomaji.value = d.romaji; } catch(e) { translateResult.value = res; } } isTranslating.value=false; };
+                const translateToJapanese = async () => { if (!translateInput.value) return; isTranslating.value=true; translateResult.value = ''; translateRomaji.value = ''; const res = await callGemini(`Translate to JP: "${translateInput.value}". JSON: {"ja":"","romaji":""}`); if(res) { try { const d = JSON.parse(res.replace(/```json/g,'').replace(/```/g,'').trim()); translateResult.value = d.ja; translateRomaji.value = d.romaji; } catch(e) { translateResult.value = res; } } isTranslating.value=false; };
 
                 const openGoogleTranslate = () => window.open(`https://translate.google.com/?sl=auto&tl=ja&text=${encodeURIComponent(translateInput.value)}`, '_blank');
                 
