@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>旅伴 Travel Mate (Auto-Fix)</title>
+    <title>旅伴 Travel Mate (Final v3)</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Vue 3 -->
@@ -512,8 +512,10 @@
     <script>
         const { createApp, ref, computed, onMounted, onUnmounted, reactive, nextTick, watch } = Vue;
         
-        // ⚠️ 請勿將此檔案上傳到公開網路，因為它包含您的 API Key
-        const apiKey = "AIzaSyAYSvgiEyoFp-c7LI88ZPHjjdTExoxn_P8"; 
+        // ----------------------------------------------------
+        // ⚠️ 請確認這組 Key 是否正確 (已為您填入)
+        // ----------------------------------------------------
+        const apiKey = "AIzaSyCoPxd6hrI89c7y6ThhPfg_rcmCoNCrepE"; 
         
         createApp({
             setup() {
@@ -604,7 +606,7 @@
                 const initMap = () => { 
                     if (map) return; 
                     const container = document.getElementById('map-container');
-                    if (!container) return;
+                    if (!container) return; // Safety check
                     map = L.map('map-container', {zoomControl: false}).setView([35.6895, 139.6917], 12); 
                     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map); 
                 };
@@ -621,21 +623,32 @@
                 const locateUser = () => { if ("geolocation" in navigator) { navigator.geolocation.getCurrentPosition(() => { alert("地圖模式目前顯示行程概覽。請使用「導航」功能來定位您的具體位置。"); }, () => alert("無法取得位置")); } };
                 const changeDay = (i) => { currentDayIndex.value = i; if(isMapMode.value) nextTick(updateMapMarkers); };
                 
+                // --- SPEECH SYNTHESIS API ---
                 const speakText = (text, lang = 'ja-JP') => {
-                    if (!window.speechSynthesis) { alert("您的瀏覽器不支援朗讀功能"); return; }
+                    if (!window.speechSynthesis) {
+                        alert("您的瀏覽器不支援朗讀功能");
+                        return;
+                    }
                     const utterance = new SpeechSynthesisUtterance(text);
                     utterance.lang = lang;
                     window.speechSynthesis.speak(utterance);
                 };
 
+                // Copy Text
                 const copyText = (text) => {
                     if (!text) return;
                     const textArea = document.createElement("textarea");
                     textArea.value = text;
-                    textArea.style.position = "fixed"; textArea.style.left = "-9999px";
+                    textArea.style.position = "fixed";
+                    textArea.style.left = "-9999px";
                     document.body.appendChild(textArea);
-                    textArea.focus(); textArea.select();
-                    try { document.execCommand('copy'); } catch (err) { console.error('Copy failed', err); }
+                    textArea.focus();
+                    textArea.select();
+                    try {
+                        document.execCommand('copy');
+                    } catch (err) {
+                        console.error('Copy failed', err);
+                    }
                     document.body.removeChild(textArea);
                 };
 
@@ -656,6 +669,7 @@
                 const highlightGuideText = (t) => t ? t.replace(/(必吃|好吃)/g, '<span class="highlight-food">$1</span>').replace(/(必買|伴手禮)/g, '<span class="highlight-buy">$1</span>') : '';
                 const shouldShowTransport = (i, item) => i > 0 || !(item.category === 'flight' && item.flightType === 'departure');
 
+                // Weather Logic (Keep same)
                 const wmoToIcon = (code) => {
                     if (code === 0) return { icon: 'fas fa-sun', color: '#eab308', outfit: '晴天', outfitIcon: 'fa-tshirt' };
                     if (code >= 1 && code <= 3) return { icon: 'fas fa-cloud-sun', color: '#f59e0b', outfit: '多雲', outfitIcon: 'fa-tshirt' };
@@ -708,8 +722,10 @@
                     } catch (e) { console.error("Weather fetch failed", e); } finally { isWeatherLoading.value = false; }
                 };
 
+                // AI Import Logic
                 const openImportModal = () => { modalMode.value = 'import'; importText.value = ''; showModal.value = true; };
                 
+                // Drag Logic (Global)
                 const startDrag = (event, item) => { dragState.isLongPressing = true; dragState.draggingId = item.id; if(navigator.vibrate) navigator.vibrate(50); window.addEventListener('touchmove', onGlobalMove, { passive: false }); window.addEventListener('touchend', onGlobalEnd); window.addEventListener('mousemove', onGlobalMove); window.addEventListener('mouseup', onGlobalEnd); };
                 const handleTouchStart = (e, item) => { dragState.startY = e.touches[0].clientY; dragState.timer = setTimeout(() => startDrag(e, item), 300); };
                 const handleMouseDown = (e, item) => { dragState.timer = setTimeout(() => startDrag(e, item), 300); window.addEventListener('mouseup', () => clearTimeout(dragState.timer), { once: true }); };
@@ -741,29 +757,36 @@
                 const onGlobalEnd = () => { clearTimeout(dragState.timer); dragState.isLongPressing = false; dragState.draggingId = null; window.removeEventListener('touchmove', onGlobalMove); window.removeEventListener('touchend', onGlobalEnd); window.removeEventListener('mousemove', onGlobalMove); window.removeEventListener('mouseup', onGlobalEnd); };
                 const handleTouchMove = () => {}; const handleTouchEnd = () => clearTimeout(dragState.timer);
 
-                // ============================================
-                //  🔥 最終修復的 AI 呼叫函數
-                // ============================================
+                // --- 修正後的 callGemini 函數 (自動嘗試切換模型) ---
                 const callGemini = async (prompt) => {
-                    if (!apiKey || apiKey.includes("在此處貼上")) {
+                    // 0. 安全檢查：如果是直接開啟檔案 (file:)，API 請求必定失敗
+                    if (window.location.protocol === 'file:') {
+                        alert("⚠️ 偵測到您直接開啟了 HTML 檔案！\n\nGoogle 的安全機制禁止直接從電腦檔案連線到 AI 伺服器 (CORS 錯誤)。\n\n請改用以下方式開啟：\n1. 安裝 VS Code\n2. 安裝 'Live Server' 擴充套件\n3. 右鍵點擊檔案 -> Open with Live Server");
+                        return null;
+                    }
+
+                    // 1. 去除 Key 的空白，防止複製貼上錯誤
+                    const cleanKey = apiKey ? apiKey.trim() : "";
+
+                    if (!cleanKey || cleanKey.includes("在此處貼上")) {
                         alert("請先在程式碼第 658 行填入您的 API Key！");
                         return null;
                     }
 
-                    // 1. 自動嘗試列表：先試 1.5-flash，再試 1.5-flash-latest，最後試 1.0-pro
-                    // 這樣可以涵蓋大部分版本差異
+                    // 2. 擴充模型列表，增加更多備選方案
                     const modelsToTry = [
                         'gemini-1.5-flash', 
                         'gemini-1.5-flash-latest', 
-                        'gemini-1.5-flash-001',
-                        'gemini-1.0-pro'
+                        'gemini-pro',
+                        'gemini-1.0-pro-latest'
                     ];
 
                     let lastError = null;
 
+                    // 3. 迴圈嘗試不同模型
                     for (const modelName of modelsToTry) {
                         try {
-                            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+                            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${cleanKey}`;
                             
                             const response = await fetch(url, {
                                 method: 'POST',
@@ -773,26 +796,39 @@
                             
                             if (response.ok) {
                                 const data = await response.json();
-                                return data.candidates[0].content.parts[0].text;
+                                if (data.candidates && data.candidates.length > 0) {
+                                    return data.candidates[0].content.parts[0].text;
+                                } else {
+                                    lastError = "AI 回傳了空內容";
+                                    break; 
+                                }
                             } else {
-                                // 如果是 404，就繼續嘗試下一個模型
+                                // 如果是 404 (Not Found)，繼續嘗試下一個
                                 if (response.status === 404) {
-                                    console.warn(`模型 ${modelName} 找不到，正在切換下一個...`);
+                                    console.warn(`模型 ${modelName} 找不到 (404)，切換下一個...`);
                                     continue;
                                 }
                                 
-                                // 其他錯誤 (400, 403, 500) 則直接報錯
+                                // 其他錯誤則直接報錯
                                 const err = await response.json();
-                                lastError = `API 錯誤 (${modelName}): ${err.error?.message}`;
+                                const errMsg = err.error?.message || '未知錯誤';
+                                
+                                if (response.status === 400) {
+                                    lastError = `API Key 無效或請求格式錯誤 (400)。\n詳細: ${errMsg}`;
+                                } else if (response.status === 403) {
+                                    lastError = `API Key 權限不足 (403)。請確認該 Key 是否已啟用 Generative Language API。`;
+                                } else {
+                                    lastError = `API 連線失敗 (${response.status}): ${errMsg}`;
+                                }
                                 break; 
                             }
                         } catch (e) {
-                            lastError = "連線失敗，請檢查網路或確認是否使用 VS Code Live Server 開啟。";
                             console.error(e);
+                            lastError = "網路連線失敗。請確認是否使用 Live Server 開啟網頁 (不要直接雙擊 HTML 檔案)。";
+                            break; 
                         }
                     }
 
-                    // 如果跑到這裡，表示所有模型都失敗了
                     if (lastError) {
                         alert(lastError);
                     } else {
