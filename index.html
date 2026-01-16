@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>旅伴 Travel Mate (Hardcoded Key)</title>
+    <title>旅伴 Travel Mate (Fixed v2)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -468,10 +468,11 @@
     <script>
         const { createApp, ref, computed, onMounted, onUnmounted, reactive, nextTick, watch } = Vue;
         
-        // ⬇️⬇️⬇️ 這裡！請將您的 API Key 貼在下方的引號中 ⬇️⬇️⬇️
+        // ----------------------------------------------------
+        // ⚠️ 請在下方雙引號中貼上您的新 API Key 
+        // ----------------------------------------------------
         const apiKey = "AIzaSyAk0YqWV9I-No2GqRY7J70j-IlepCi6oKk"; 
-        // ⬆️⬆️⬆️ 請注意安全，不要將此檔案上傳到公開網路 ⬆️⬆️⬆️
-
+        
         createApp({
             setup() {
                 const activeTab = ref('itinerary');
@@ -719,8 +720,8 @@
                 const handleTouchMove = () => {}; const handleTouchEnd = () => clearTimeout(dragState.timer);
 
                 const callGemini = async (prompt) => {
-                    if (apiKey.includes("在此處貼上您新申請的API_KEY") || !apiKey) {
-                        alert("請先在程式碼中填入您的 API Key！");
+                    if (apiKey.includes("在此處貼上") || !apiKey) {
+                        alert("請先在程式碼第 658 行填入您的 API Key！");
                         return null;
                     }
 
@@ -732,7 +733,9 @@
                         });
                         
                         if (!response.ok) {
-                            alert(`API 連線失敗 (Code: ${response.status})。請確認 Key 是否正確。`);
+                            const err = await response.json();
+                            console.error(err);
+                            alert(`API 連線失敗 (Code: ${response.status})\n原因: ${err.error?.message || '未知錯誤'}`);
                             return null;
                         }
 
@@ -740,7 +743,7 @@
                         return d.candidates[0].content.parts[0].text;
                     } catch (e) { 
                         console.error(e);
-                        alert("發生錯誤，請改用 VS Code Live Server 開啟以避免 CORS 問題。");
+                        alert("連線錯誤：請檢查網路，或改用 VS Code Live Server 開啟網頁。");
                         return null; 
                     } 
                 };
