@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>旅伴 Travel Mate (Deep Debug)</title>
+    <title>旅伴 Travel Mate (Pro)</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Vue 3 -->
@@ -150,9 +150,13 @@
                          </div>
                     </div>
 
-                    <!-- 右側：天氣 -->
-                    <div class="text-right">
-                        <div v-if="isWeatherLoading" class="w-16 h-16 flex items-center justify-center"><span class="spinner w-6 h-6 border-4"></span></div>
+                    <!-- 右側：天氣與設定 -->
+                    <div class="text-right flex flex-col items-end gap-2">
+                        <button @click="setApiKey" class="text-[10px] text-gray-400 bg-white/50 border border-gray-200 px-2 py-1 rounded-full hover:bg-white hover:text-jp-blue transition-colors flex items-center">
+                            <i class="fas fa-key mr-1"></i> {{ hasApiKey ? '已設定 Key' : '設定 Key' }}
+                        </button>
+                        
+                        <div v-if="isWeatherLoading" class="w-16 h-12 flex items-center justify-center"><span class="spinner w-5 h-5 border-4"></span></div>
                         <div v-else class="flex flex-col items-end">
                             <div class="flex items-center justify-end space-x-3 mb-1">
                                 <div class="w-8 h-8 rounded-full bg-white/80 shadow-sm border border-gray-100 flex items-center justify-center text-gray-400" :title="currentWeather.outfit">
@@ -188,12 +192,15 @@
             <div v-else class="pt-10 pb-6 flex justify-between items-end">
                 <h1 class="text-3xl font-serif font-bold text-jp-black">{{ getTabTitle }}</h1>
                 <div class="flex gap-2">
-                    <button v-if="activeTab === 'shopping'" @click="recommendShopping" :disabled="isAiLoading" class="text-xs bg-jp-black text-white px-3 py-2 rounded-full shadow-md flex items-center transform transition active:scale-95 disabled:opacity-70">
+                    <button v-if="activeTab === 'shopping'" @click="recommendShopping" :disabled="isAiLoading" class="text-xs bg-jp-black text-white px-3 py-2 rounded-full shadow-md flex items-center transform transition active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed">
                         <span v-if="isAiLoading" class="spinner border-white mr-1.5" style="width:12px;height:12px;"></span>
-                        <i v-else class="fas fa-magic mr-1.5"></i> AI 推薦
+                        <i v-else class="fas fa-magic mr-1.5"></i> {{ isAiLoading ? '生成中...' : 'AI 推薦' }}
                     </button>
                     <button v-if="activeTab === 'expenses'" @click="openAddModal" class="text-xs bg-jp-black text-white px-3 py-2 rounded-full shadow-md flex items-center active:scale-95 transition">
                         <i class="fas fa-plus mr-1.5"></i> 記一筆
+                    </button>
+                    <button v-if="activeTab !== 'shopping' && activeTab !== 'expenses'" @click="setApiKey" class="text-[10px] text-gray-400 bg-white border border-gray-200 px-2 py-1 rounded-full hover:bg-gray-50 transition-colors">
+                        <i class="fas fa-key"></i>
                     </button>
                 </div>
             </div>
@@ -395,7 +402,16 @@
             <!-- TAB 4: 購物清單 -->
             <div v-if="activeTab === 'shopping'" class="grid grid-cols-2 gap-4">
                  <div v-if="shoppingList.length === 0" class="col-span-2 text-center py-12 text-gray-300"><i class="fas fa-shopping-basket text-4xl mb-3 opacity-30"></i><p>清單空空的</p></div>
-                 <div v-for="(item, index) in shoppingList" :key="index" class="jp-card overflow-hidden group"><div class="relative h-32 bg-gray-50 flex items-center justify-center overflow-hidden"><button @click="shoppingList.splice(index, 1)" class="absolute top-2 right-2 w-6 h-6 bg-black/20 hover:bg-black/40 text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-all z-10"><i class="fas fa-times"></i></button><img v-if="item.image" :src="item.image" class="w-full h-full object-cover"><div v-else class="text-center text-gray-300"><i class="fas fa-camera text-2xl mb-1"></i></div></div><div class="p-3"><h4 class="font-bold text-gray-800 text-sm truncate">{{ item.name }}</h4></div></div>
+                 <div v-for="(item, index) in shoppingList" :key="index" @click="editShoppingItem(item, index)" class="jp-card overflow-hidden group cursor-pointer active:scale-[0.98] transition-transform">
+                    <div class="relative h-32 bg-gray-50 flex items-center justify-center overflow-hidden">
+                        <button @click.stop="shoppingList.splice(index, 1)" class="absolute top-2 right-2 w-6 h-6 bg-black/20 hover:bg-black/40 text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-all z-10"><i class="fas fa-times"></i></button>
+                        <img v-if="item.image" :src="item.image" class="w-full h-full object-cover">
+                        <div v-else class="text-center text-gray-300"><i class="fas fa-camera text-2xl mb-1"></i></div>
+                    </div>
+                    <div class="p-3">
+                        <h4 class="font-bold text-gray-800 text-sm truncate">{{ item.name }}</h4>
+                    </div>
+                 </div>
             </div>
 
             <!-- TAB 5: 花費 -->
@@ -484,7 +500,7 @@
                             <div><label class="text-xs text-gray-400 font-bold mb-2 block">分類</label><div class="flex flex-wrap gap-2"><span v-for="cat in categoryOptions" @click="form.category = cat.val" :class="['px-3 py-2 rounded-xl text-xs font-medium cursor-pointer transition-all border', form.category === cat.val ? 'bg-jp-black text-white border-jp-black' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300']"><i :class="['fas mr-1.5', cat.icon]"></i> {{ cat.label }}</span></div></div>
                             <div class="bg-gray-50 p-4 rounded-xl border border-gray-100 space-y-3"><div class="flex items-center space-x-3"><i class="fas fa-map-marker-alt text-gray-400 w-5 text-center"></i><input v-model="form.locationQuery" type="text" class="bg-transparent w-full outline-none text-sm placeholder-gray-400 text-gray-700" placeholder="地圖搜尋關鍵字 (選填)"></div><div class="w-full h-px bg-gray-200"></div><div class="flex items-center space-x-3"><i class="fas fa-yen-sign text-gray-400 w-5 text-center"></i><input v-model="form.cost" type="number" class="bg-transparent w-full outline-none text-sm placeholder-gray-400 text-gray-700 font-mono" placeholder="花費金額 (選填)"></div></div>
                             <div v-if="!isEditing"><label class="text-xs text-gray-400 font-bold mb-2 block">交通方式</label><div class="flex space-x-2"><button v-for="t in ['walk','train','car','other']" :key="t" @click="form.transportType = t" :class="['flex-1 py-2 rounded-xl border text-xs transition-colors flex items-center justify-center', form.transportType === t ? 'bg-gray-800 text-white border-gray-800' : 'text-gray-400 border-gray-200']"><i :class="['mr-1', getTransportIcon(t)]"></i> {{ getTransportLabel(t) }}</button></div></div>
-                            <div><div class="flex justify-between items-center mb-1"><label class="text-xs text-gray-400 font-bold">筆記</label><button @click="generateNotes" :disabled="isAiLoading || !form.name" class="text-xs text-jp-blue hover:underline disabled:opacity-50"><i class="fas fa-magic mr-1"></i>AI 攻略</button></div><textarea v-model="form.notes" rows="3" class="w-full bg-gray-50 border-0 rounded-xl p-3 text-sm text-gray-700 resize-none" placeholder="輸入備註..."></textarea></div>
+                            <div><div class="flex justify-between items-center mb-1"><label class="text-xs text-gray-400 font-bold">筆記</label><button @click="generateNotes" :disabled="isAiLoading" class="text-xs text-jp-blue hover:underline disabled:opacity-50 flex items-center"><span v-if="isAiLoading" class="spinner w-3 h-3 mr-1"></span><i v-else class="fas fa-magic mr-1"></i>AI 攻略</button></div><textarea v-model="form.notes" rows="3" class="w-full bg-gray-50 border-0 rounded-xl p-3 text-sm text-gray-700 resize-none" placeholder="輸入備註..."></textarea></div>
                             <div class="flex space-x-3 mt-6"><button v-if="isEditing" @click="confirmDelete" class="flex-1 py-3.5 bg-red-50 text-red-500 rounded-xl font-bold text-sm">刪除</button><button @click="saveItem" class="flex-1 py-3.5 bg-jp-black text-white rounded-xl font-bold text-sm shadow-lg">儲存</button></div>
                         </div>
 
@@ -498,7 +514,7 @@
                         
                         <!-- Nav / Shopping / Reservation -->
                          <div v-if="modalMode === 'nav'" class="flex-1 flex flex-col min-h-[400px]"><div class="flex-1 rounded-xl overflow-hidden shadow-inner border border-gray-200 bg-gray-100 relative"><iframe class="map-iframe" loading="lazy" allowfullscreen :src="navMapUrl"></iframe></div><div class="mt-4 flex-shrink-0"><button @click="openRealGoogleMaps" class="w-full py-3.5 bg-blue-600 text-white rounded-xl font-bold shadow-lg flex items-center justify-center text-sm active:scale-95 transition-transform"><i class="fas fa-location-arrow mr-2"></i> 開啟 Google Maps</button></div></div>
-                         <div v-if="modalMode === 'shopping'" class="space-y-4"><div><label class="text-xs text-gray-400 font-bold mb-1 block">商品</label><input v-model="shoppingForm.name" type="text" class="w-full bg-gray-50 border-0 rounded-xl p-3"></div><div><label class="text-xs text-gray-400 font-bold mb-1 block">圖片</label><div class="relative w-full h-32 bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center overflow-hidden"><input type="file" @change="handleImageUpload" class="absolute inset-0 opacity-0 z-10"><img v-if="shoppingForm.image" :src="shoppingForm.image" class="w-full h-full object-cover absolute"><div v-else class="text-center text-gray-400"><i class="fas fa-camera text-2xl"></i></div></div></div><button @click="saveShoppingItem" class="w-full py-3.5 bg-jp-black text-white rounded-xl font-bold text-sm">加入</button></div>
+                         <div v-if="modalMode === 'shopping'" class="space-y-4"><div><label class="text-xs text-gray-400 font-bold mb-1 block">商品</label><input v-model="shoppingForm.name" type="text" class="w-full bg-gray-50 border-0 rounded-xl p-3"></div><div><label class="text-xs text-gray-400 font-bold mb-1 block">圖片</label><div class="relative w-full h-32 bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center overflow-hidden"><input type="file" @change="handleImageUpload" class="absolute inset-0 opacity-0 z-10"><img v-if="shoppingForm.image" :src="shoppingForm.image" class="w-full h-full object-cover absolute"><div v-else class="text-center text-gray-400"><i class="fas fa-camera text-2xl"></i></div></div></div><button @click="saveShoppingItem" class="w-full py-3.5 bg-jp-black text-white rounded-xl font-bold text-sm">{{ editingShoppingIndex !== null ? '更新' : '加入' }}</button></div>
                          <div v-if="modalMode === 'reservation'" class="space-y-4"><div><label class="text-xs text-gray-400 font-bold mb-1 block">分類</label><div class="flex flex-wrap gap-2"><span v-for="cat in ['交通','住宿','餐廳','門票','其他']" @click="reservationForm.category = cat" :class="['px-3 py-1.5 rounded-full text-xs border cursor-pointer', reservationForm.category === cat ? 'bg-jp-black text-white border-jp-black' : 'bg-white border-gray-200 text-gray-500']">{{ cat }}</span></div></div><div><label class="text-xs text-gray-400 font-bold mb-1 block">名稱</label><input v-model="reservationForm.name" type="text" class="w-full bg-gray-50 border-0 rounded-xl p-3"></div><div><label class="text-xs text-gray-400 font-bold mb-1 block">圖片</label><div class="relative w-full h-32 bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center overflow-hidden"><input type="file" @change="handleReservationImageUpload" class="absolute inset-0 opacity-0 z-10"><img v-if="reservationForm.image" :src="reservationForm.image" class="w-full h-full object-cover absolute"><div v-else class="text-center text-gray-400"><i class="fas fa-file-upload text-2xl"></i></div></div></div><button @click="saveReservation" class="w-full py-3.5 bg-jp-black text-white rounded-xl font-bold text-sm">新增</button></div>
                          <div v-if="modalMode === 'imagePreview'" class="flex flex-col h-full justify-center"><img :src="previewImageUrl" class="max-h-[70vh] object-contain rounded-lg"></div>
                     </div>
@@ -512,13 +528,15 @@
     <script>
         const { createApp, ref, computed, onMounted, onUnmounted, reactive, nextTick, watch } = Vue;
         
-        // ----------------------------------------------------
-        // ⚠️ 請確認這組 Key 是否正確 (已為您填入)
-        // ----------------------------------------------------
-        const apiKey = "AIzaSyCg5IAYIj1OzupZMxj_q9nuOaquBnEC5Zs"; 
-        
+        // 初始 Key (這裡放一個空字串，讓使用者自己輸入會比較安全且不容易出錯)
+        // 系統會自動從 localStorage 讀取上次輸入的
+        const defaultKey = localStorage.getItem('gemini_api_key') || "";
+
         createApp({
             setup() {
+                const apiKey = ref(defaultKey);
+                const hasApiKey = computed(() => !!apiKey.value && apiKey.value.length > 20);
+                
                 const activeTab = ref('itinerary');
                 const showModal = ref(false);
                 const showDeleteConfirm = ref(false);
@@ -550,6 +568,7 @@
                 const shoppingForm = ref({ name: '', image: null });
                 const expenseForm = ref({ category: '飲食', name: '', date: '', amount: '', payment: '現金', isSplit: false, splitMembers: [] });
                 const flightSummaryForm = ref({ departure: {}, return: {} }); 
+                const editingShoppingIndex = ref(null);
 
                 const translateInput = ref(''); const translateResult = ref(''); const translateRomaji = ref(''); const isTranslating = ref(false); const activePhraseCat = ref('greet');
                 const phraseCategories = ref([{ id: 'greet', name: '問候' }, { id: 'food', name: '點餐' }, { id: 'shop', name: '購物' }, { id: 'traffic', name: '交通' }]);
@@ -587,6 +606,7 @@
                     if(modalMode.value==='editFlightSummary')return '編輯航班';
                     if(activeTab.value==='itinerary')return isEditing.value?'編輯行程':'新增行程'; 
                     if(modalMode.value==='expenses')return isEditingExpense.value?'編輯花費':'新增花費'; 
+                    if(modalMode.value === 'shopping') return editingShoppingIndex.value !== null ? '編輯商品' : '新增商品';
                     return '新增'; 
                 });
                 const currentDayItems = computed(() => itineraryItems.value.filter(item => item.dayIndex === currentDayIndex.value));
@@ -623,32 +643,21 @@
                 const locateUser = () => { if ("geolocation" in navigator) { navigator.geolocation.getCurrentPosition(() => { alert("地圖模式目前顯示行程概覽。請使用「導航」功能來定位您的具體位置。"); }, () => alert("無法取得位置")); } };
                 const changeDay = (i) => { currentDayIndex.value = i; if(isMapMode.value) nextTick(updateMapMarkers); };
                 
-                // --- SPEECH SYNTHESIS API ---
                 const speakText = (text, lang = 'ja-JP') => {
-                    if (!window.speechSynthesis) {
-                        alert("您的瀏覽器不支援朗讀功能");
-                        return;
-                    }
+                    if (!window.speechSynthesis) { alert("您的瀏覽器不支援朗讀功能"); return; }
                     const utterance = new SpeechSynthesisUtterance(text);
                     utterance.lang = lang;
                     window.speechSynthesis.speak(utterance);
                 };
 
-                // Copy Text
                 const copyText = (text) => {
                     if (!text) return;
                     const textArea = document.createElement("textarea");
                     textArea.value = text;
-                    textArea.style.position = "fixed";
-                    textArea.style.left = "-9999px";
+                    textArea.style.position = "fixed"; textArea.style.left = "-9999px";
                     document.body.appendChild(textArea);
-                    textArea.focus();
-                    textArea.select();
-                    try {
-                        document.execCommand('copy');
-                    } catch (err) {
-                        console.error('Copy failed', err);
-                    }
+                    textArea.focus(); textArea.select();
+                    try { document.execCommand('copy'); } catch (err) { console.error('Copy failed', err); }
                     document.body.removeChild(textArea);
                 };
 
@@ -668,230 +677,183 @@
                 const getExpenseIcon = (c) => ({ '交通': 'fa-bus', '飲食': 'fa-utensils', '住宿': 'fa-bed', '門票': 'fa-ticket-alt', '購物': 'fa-shopping-bag', '其他': 'fa-receipt' }[c] || 'fa-receipt');
                 const highlightGuideText = (t) => t ? t.replace(/(必吃|好吃)/g, '<span class="highlight-food">$1</span>').replace(/(必買|伴手禮)/g, '<span class="highlight-buy">$1</span>') : '';
                 const shouldShowTransport = (i, item) => i > 0 || !(item.category === 'flight' && item.flightType === 'departure');
-
-                // Weather Logic (Keep same)
-                const wmoToIcon = (code) => {
-                    if (code === 0) return { icon: 'fas fa-sun', color: '#eab308', outfit: '晴天', outfitIcon: 'fa-tshirt' };
-                    if (code >= 1 && code <= 3) return { icon: 'fas fa-cloud-sun', color: '#f59e0b', outfit: '多雲', outfitIcon: 'fa-tshirt' };
-                    if (code >= 45 && code <= 48) return { icon: 'fas fa-smog', color: '#9ca3af', outfit: '有霧', outfitIcon: 'fa-user' };
-                    if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return { icon: 'fas fa-cloud-rain', color: '#3b82f6', outfit: '下雨', outfitIcon: 'fa-umbrella' };
-                    if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) return { icon: 'fas fa-snowflake', color: '#60a5fa', outfit: '下雪', outfitIcon: 'fa-snowflake' };
-                    if (code >= 95) return { icon: 'fas fa-bolt', color: '#eab308', outfit: '雷雨', outfitIcon: 'fa-umbrella' };
-                    return { icon: 'fas fa-cloud', color: '#9ca3af', outfit: '陰天', outfitIcon: 'fa-user' };
-                };
-                
-                const getOutfitSuggestion = (temp, isRainy, isSnowy) => {
-                    if (isSnowy) return { text: '羽絨衣+圍巾', icon: 'fa-snowflake' };
-                    if (isRainy) return { text: '帶傘+防水外套', icon: 'fa-umbrella' };
-                    if (temp >= 28) return { text: '短袖+防曬', icon: 'fa-tshirt' };
-                    if (temp >= 22) return { text: '短袖+薄外套', icon: 'fa-tshirt' };
-                    if (temp >= 15) return { text: '長袖+外套', icon: 'fa-user' };
-                    if (temp >= 10) return { text: '毛衣+大衣', icon: 'fa-user-tie' };
-                    return { text: '發熱衣+厚外套', icon: 'fa-mitten' };
-                };
-
-                const fetchWeatherForecast = async () => {
-                    isWeatherLoading.value = true;
-                    try {
-                        const loc = tripSettings.value.location;
-                        const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(loc)}&count=1&language=zh&format=json`);
-                        const geoData = await geoRes.json();
-                        if (!geoData.results || geoData.results.length === 0) { console.warn("Location not found"); isWeatherLoading.value = false; return; }
-                        const { latitude, longitude } = geoData.results[0];
-                        const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max&timezone=auto`);
-                        const weatherData = await weatherRes.json();
-                        
-                        if (weatherData.daily) {
-                            const newForecast = [];
-                            const daily = weatherData.daily;
-                            for (let i = 0; i < tripSettings.value.duration; i++) {
-                                const index = i % daily.time.length;
-                                const code = daily.weather_code[index];
-                                const maxTemp = daily.temperature_2m_max[index];
-                                const minTemp = daily.temperature_2m_min[index];
-                                const avgTemp = Math.round((maxTemp + minTemp) / 2);
-                                const feelsLike = Math.round(daily.apparent_temperature_max[index]);
-                                const weatherInfo = wmoToIcon(code);
-                                const isRainy = [51, 53, 55, 61, 63, 65, 80, 81, 82, 95, 96, 99].includes(code);
-                                const isSnowy = [71, 73, 75, 77, 85, 86].includes(code);
-                                const outfit = getOutfitSuggestion(avgTemp, isRainy, isSnowy);
-                                newForecast.push({ temp: avgTemp, feelsLike: feelsLike, icon: weatherInfo.icon, iconColor: weatherInfo.color, outfit: outfit.text, outfitIcon: outfit.icon });
-                            }
-                            weatherForecast.value = newForecast;
-                        }
-                    } catch (e) { console.error("Weather fetch failed", e); } finally { isWeatherLoading.value = false; }
-                };
-
-                // AI Import Logic
+                const wmoToIcon = (code) => { /* ... (same) ... */ if (code === 0) return { icon: 'fas fa-sun', color: '#eab308', outfit: '晴天', outfitIcon: 'fa-tshirt' }; if (code >= 1 && code <= 3) return { icon: 'fas fa-cloud-sun', color: '#f59e0b', outfit: '多雲', outfitIcon: 'fa-tshirt' }; if (code >= 45 && code <= 48) return { icon: 'fas fa-smog', color: '#9ca3af', outfit: '有霧', outfitIcon: 'fa-user' }; if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return { icon: 'fas fa-cloud-rain', color: '#3b82f6', outfit: '下雨', outfitIcon: 'fa-umbrella' }; if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) return { icon: 'fas fa-snowflake', color: '#60a5fa', outfit: '下雪', outfitIcon: 'fa-snowflake' }; if (code >= 95) return { icon: 'fas fa-bolt', color: '#eab308', outfit: '雷雨', outfitIcon: 'fa-umbrella' }; return { icon: 'fas fa-cloud', color: '#9ca3af', outfit: '陰天', outfitIcon: 'fa-user' }; };
+                const getOutfitSuggestion = (temp, isRainy, isSnowy) => { if (isSnowy) return { text: '羽絨衣+圍巾', icon: 'fa-snowflake' }; if (isRainy) return { text: '帶傘+防水外套', icon: 'fa-umbrella' }; if (temp >= 28) return { text: '短袖+防曬', icon: 'fa-tshirt' }; if (temp >= 22) return { text: '短袖+薄外套', icon: 'fa-tshirt' }; if (temp >= 15) return { text: '長袖+外套', icon: 'fa-user' }; if (temp >= 10) return { text: '毛衣+大衣', icon: 'fa-user-tie' }; return { text: '發熱衣+厚外套', icon: 'fa-mitten' }; };
+                const fetchWeatherForecast = async () => { /* ... (same logic) ... */ isWeatherLoading.value = true; try { const loc = tripSettings.value.location; const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(loc)}&count=1&language=zh&format=json`); const geoData = await geoRes.json(); if (!geoData.results || geoData.results.length === 0) { isWeatherLoading.value = false; return; } const { latitude, longitude } = geoData.results[0]; const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max&timezone=auto`); const weatherData = await weatherRes.json(); if (weatherData.daily) { const newForecast = []; const daily = weatherData.daily; for (let i = 0; i < tripSettings.value.duration; i++) { const index = i % daily.time.length; const code = daily.weather_code[index]; const maxTemp = daily.temperature_2m_max[index]; const minTemp = daily.temperature_2m_min[index]; const avgTemp = Math.round((maxTemp + minTemp) / 2); const feelsLike = Math.round(daily.apparent_temperature_max[index]); const weatherInfo = wmoToIcon(code); const isRainy = [51, 53, 55, 61, 63, 65, 80, 81, 82, 95, 96, 99].includes(code); const isSnowy = [71, 73, 75, 77, 85, 86].includes(code); const outfit = getOutfitSuggestion(avgTemp, isRainy, isSnowy); newForecast.push({ temp: avgTemp, feelsLike: feelsLike, icon: weatherInfo.icon, iconColor: weatherInfo.color, outfit: outfit.text, outfitIcon: outfit.icon }); } weatherForecast.value = newForecast; } } catch (e) { console.error("Weather fetch failed", e); } finally { isWeatherLoading.value = false; } };
                 const openImportModal = () => { modalMode.value = 'import'; importText.value = ''; showModal.value = true; };
-                
-                // Drag Logic (Global)
                 const startDrag = (event, item) => { dragState.isLongPressing = true; dragState.draggingId = item.id; if(navigator.vibrate) navigator.vibrate(50); window.addEventListener('touchmove', onGlobalMove, { passive: false }); window.addEventListener('touchend', onGlobalEnd); window.addEventListener('mousemove', onGlobalMove); window.addEventListener('mouseup', onGlobalEnd); };
                 const handleTouchStart = (e, item) => { dragState.startY = e.touches[0].clientY; dragState.timer = setTimeout(() => startDrag(e, item), 300); };
                 const handleMouseDown = (e, item) => { dragState.timer = setTimeout(() => startDrag(e, item), 300); window.addEventListener('mouseup', () => clearTimeout(dragState.timer), { once: true }); };
-                const onGlobalMove = (e) => {
-                    if (!dragState.isLongPressing) return; e.preventDefault();
-                    let clientY = e.touches ? e.touches[0].clientY : e.clientY;
-                    const element = document.elementFromPoint(window.innerWidth / 2, clientY);
-                    const targetRow = element?.closest('.draggable-item');
-                    if (targetRow && targetRow.dataset.index) {
-                        const targetIndex = parseInt(targetRow.dataset.index);
-                        const draggingId = dragState.draggingId;
-                        if (targetIndex !== undefined && draggingId) {
-                            const curIdx = currentDayItems.value.findIndex(i => i.id === draggingId);
-                            const tgtIdx = currentDayItems.value.findIndex((_, idx) => idx === targetIndex); 
-                            
-                            if (curIdx !== -1 && tgtIdx !== -1 && curIdx !== tgtIdx) {
-                                const itemA = currentDayItems.value[curIdx];
-                                const itemB = currentDayItems.value[tgtIdx];
-                                const mainIndexA = itineraryItems.value.indexOf(itemA);
-                                const mainIndexB = itineraryItems.value.indexOf(itemB);
-                                if (mainIndexA > -1 && mainIndexB > -1) {
-                                    const temp = itineraryItems.value[mainIndexA]; itineraryItems.value[mainIndexA] = itineraryItems.value[mainIndexB]; itineraryItems.value[mainIndexB] = temp;
-                                    if(navigator.vibrate) navigator.vibrate(20);
-                                }
-                            }
-                        }
-                    }
-                };
+                const onGlobalMove = (e) => { if (!dragState.isLongPressing) return; e.preventDefault(); let clientY = e.touches ? e.touches[0].clientY : e.clientY; const element = document.elementFromPoint(window.innerWidth / 2, clientY); const targetRow = element?.closest('.draggable-item'); if (targetRow && targetRow.dataset.index) { const targetIndex = parseInt(targetRow.dataset.index); const draggingId = dragState.draggingId; if (targetIndex !== undefined && draggingId) { const curIdx = currentDayItems.value.findIndex(i => i.id === draggingId); const tgtIdx = currentDayItems.value.findIndex((_, idx) => idx === targetIndex); if (curIdx !== -1 && tgtIdx !== -1 && curIdx !== tgtIdx) { const itemA = currentDayItems.value[curIdx]; const itemB = currentDayItems.value[tgtIdx]; const mainIndexA = itineraryItems.value.indexOf(itemA); const mainIndexB = itineraryItems.value.indexOf(itemB); if (mainIndexA > -1 && mainIndexB > -1) { const temp = itineraryItems.value[mainIndexA]; itineraryItems.value[mainIndexA] = itineraryItems.value[mainIndexB]; itineraryItems.value[mainIndexB] = temp; if(navigator.vibrate) navigator.vibrate(20); } } } } };
                 const onGlobalEnd = () => { clearTimeout(dragState.timer); dragState.isLongPressing = false; dragState.draggingId = null; window.removeEventListener('touchmove', onGlobalMove); window.removeEventListener('touchend', onGlobalEnd); window.removeEventListener('mousemove', onGlobalMove); window.removeEventListener('mouseup', onGlobalEnd); };
                 const handleTouchMove = () => {}; const handleTouchEnd = () => clearTimeout(dragState.timer);
 
-                // --- 修正後的 callGemini 函數 (自動嘗試切換模型) ---
-                const callGemini = async (prompt) => {
-                    // 0. 安全檢查：如果是直接開啟檔案 (file:)，API 請求必定失敗
+                // --- Helper: Clean JSON ---
+                const cleanJson = (str) => {
+                    if (!str) return null;
+                    // Remove markdown code blocks
+                    let s = str.replace(/```json/g, '').replace(/```/g, '').trim();
+                    // Try to find first [ or {
+                    const firstBracket = s.indexOf('[');
+                    const firstBrace = s.indexOf('{');
+                    const start = (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) ? firstBracket : firstBrace;
+                    if (start !== -1) s = s.substring(start);
+                    
+                    // Try to find last ] or }
+                    const lastBracket = s.lastIndexOf(']');
+                    const lastBrace = s.lastIndexOf('}');
+                    const end = Math.max(lastBracket, lastBrace);
+                    if (end !== -1) s = s.substring(0, end + 1);
+                    return s;
+                };
+
+                // --- 1. Set API Key Manually ---
+                const setApiKey = () => {
+                    const input = prompt("AIzaSyCg5IAYIj1OzupZMxj_q9nuOaquBnEC5Zs", apiKey.value);
+                    if (input !== null) {
+                        const newKey = input.trim();
+                        apiKey.value = newKey;
+                        localStorage.setItem('gemini_api_key', newKey);
+                        if (newKey) alert("API Key 已儲存！");
+                    }
+                };
+
+                // --- 2. Call Gemini (Robust) ---
+                const callGemini = async (promptText) => {
+                    // Check local file
                     if (window.location.protocol === 'file:') {
-                        alert("⚠️ 偵測到您直接開啟了 HTML 檔案！\n\nGoogle 的安全機制禁止直接從電腦檔案連線到 AI 伺服器 (CORS 錯誤)。\n\n請改用以下方式開啟：\n1. 安裝 VS Code\n2. 安裝 'Live Server' 擴充套件\n3. 右鍵點擊檔案 -> Open with Live Server");
+                        alert("⚠️ 請勿直接雙擊開啟 HTML！\n請使用 VS Code 的 Live Server，否則 AI 功能會被瀏覽器安全機制阻擋。");
                         return null;
                     }
 
-                    // 1. 去除 Key 的空白，防止複製貼上錯誤
-                    const cleanKey = apiKey ? apiKey.trim() : "";
-
-                    if (!cleanKey || cleanKey.includes("在此處貼上")) {
-                        alert("請先在程式碼第 658 行填入您的 API Key！");
-                        return null;
+                    // Check Key
+                    if (!apiKey.value || apiKey.value.length < 20) {
+                        const input = prompt("尚未設定 API Key，請貼上您的 Key：");
+                        if (!input) return null;
+                        apiKey.value = input.trim();
+                        localStorage.setItem('gemini_api_key', apiKey.value);
                     }
 
-                    // 2. 擴充模型列表，增加更多備選方案
-                    const modelsToTry = [
-                        'gemini-1.5-flash', 
-                        'gemini-1.5-flash-latest', 
-                        'gemini-pro',
-                        'gemini-1.0-pro-latest'
-                    ];
+                    // Models to try
+                    const models = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-pro', 'gemini-1.0-pro-latest'];
+                    let lastError = "";
 
-                    let lastError = null;
+                    // Timeout controller (15s)
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-                    // 3. 迴圈嘗試不同模型
-                    for (const modelName of modelsToTry) {
-                        try {
-                            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${cleanKey}`;
-                            
-                            const response = await fetch(url, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-                            });
-                            
-                            if (response.ok) {
-                                const data = await response.json();
-                                if (data.candidates && data.candidates.length > 0) {
-                                    return data.candidates[0].content.parts[0].text;
+                    try {
+                        for (const model of models) {
+                            try {
+                                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.value}`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ contents: [{ parts: [{ text: promptText }] }] }),
+                                    signal: controller.signal
+                                });
+
+                                if (response.ok) {
+                                    const data = await response.json();
+                                    return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
                                 } else {
-                                    lastError = "AI 回傳了空內容";
-                                    break; 
+                                    if (response.status === 404) continue; // Try next model
+                                    const err = await response.json();
+                                    throw new Error(`API Error (${response.status}): ${err.error?.message}`);
                                 }
-                            } else {
-                                // 如果是 404 (Not Found)，繼續嘗試下一個
-                                if (response.status === 404) {
-                                    console.warn(`模型 ${modelName} 找不到 (404)，切換下一個...`);
-                                    continue;
-                                }
-                                
-                                // 其他錯誤則直接報錯
-                                const err = await response.json();
-                                const errMsg = err.error?.message || '未知錯誤';
-                                
-                                if (response.status === 400) {
-                                    lastError = `API Key 無效或請求格式錯誤 (400)。\n詳細: ${errMsg}`;
-                                } else if (response.status === 403) {
-                                    lastError = `API Key 權限不足 (403)。請確認該 Key 是否已啟用 Generative Language API。`;
-                                } else {
-                                    lastError = `API 連線失敗 (${response.status}): ${errMsg}`;
-                                }
-                                break; 
+                            } catch (e) {
+                                console.warn(`Model ${model} failed:`, e);
+                                lastError = e.message;
+                                if (e.name === 'AbortError') throw new Error("連線逾時，請檢查網路狀況。");
                             }
-                        } catch (e) {
-                            console.error(e);
-                            lastError = "網路連線失敗。請確認是否使用 Live Server 開啟網頁 (不要直接雙擊 HTML 檔案)。";
-                            break; 
                         }
-                    }
-
-                    if (lastError) {
-                        alert(lastError);
-                    } else {
-                        alert("找不到可用的 Gemini 模型，請確認您的 API Key 是否正確。");
+                    } catch (e) {
+                        alert(e.message || lastError || "AI 連線失敗，請檢查 Key 或網路。");
+                    } finally {
+                        clearTimeout(timeoutId);
                     }
                     return null;
                 };
-                
+
+                // --- AI Features ---
                 const importItinerary = async () => {
                     if (!importText.value) return;
                     isImporting.value = true;
-                    const prompt = `Parse the following travel itinerary text into a JSON array of objects. 
-                    Format: [{ name: "string", category: "spot"|"food"|"shopping"|"hotel"|"flight"|"other", dayIndex: number (0-based), hours: "string" (e.g. "10:00"), notes: "string", transportType: "train"|"walk"|"car" }].
-                    Assume trip starts on Day 1 (index 0). Infer category, transport, hours from text.
-                    Itinerary Text: "${importText.value}"`;
-                    
                     try {
+                        const prompt = `Parse this itinerary into JSON array: [{name, category(spot/food/shopping/hotel/flight/other), dayIndex(0-based number), hours, notes, transportType(train/walk/car)}]. Text: "${importText.value}"`;
                         const res = await callGemini(prompt);
                         if (res) {
-                            const cleanJson = res.replace(/```json/g,'').replace(/```/g,'').trim();
-                            const parsed = JSON.parse(cleanJson);
+                            const parsed = JSON.parse(cleanJson(res));
                             if (Array.isArray(parsed)) {
-                                const newItems = parsed.map(p => ({
-                                    ...p,
-                                    id: Date.now() + Math.random(),
-                                    cost: 0,
-                                    locationQuery: p.name,
-                                    transportTime: '15分',
-                                    coords: [35.6895, 139.6917],
-                                    splitMembers: []
-                                }));
+                                const newItems = parsed.map(p => ({ ...p, id: Date.now() + Math.random(), cost: 0, locationQuery: p.name, transportTime: '15分', coords: [35.6895, 139.6917], splitMembers: [] }));
                                 itineraryItems.value.push(...newItems);
-                                const maxDay = Math.max(...newItems.map(i => i.dayIndex));
-                                if (maxDay >= tripSettings.value.duration) {
-                                    tripForm.value.duration = maxDay + 1;
-                                    saveTripSettings();
-                                }
+                                const maxDay = Math.max(...newItems.map(i => i.dayIndex || 0));
+                                if (maxDay >= tripSettings.value.duration) { tripForm.value.duration = maxDay + 1; saveTripSettings(); }
                                 showModal.value = false;
                                 alert("匯入成功！");
                             }
                         }
-                    } catch (e) {
-                        console.error("Import failed", e);
-                        alert("匯入失敗，請確認格式或稍後再試。");
-                    } finally {
-                        isImporting.value = false;
-                    }
+                    } catch (e) { alert("無法解析內容，請重試"); } finally { isImporting.value = false; }
                 };
 
-                const generateNotes = async () => { isAiLoading.value=true; const r = await callGemini(`簡介「${form.value.name}」100字`); if (r) form.value.notes = r; isAiLoading.value=false; };
-                const recommendShopping = async () => { isAiLoading.value=true; let r = await callGemini(`推薦3個${tripSettings.value.location}必買。JSON array: [{"name":"","image":null}]`); if(r) { try { shoppingList.value.push(...JSON.parse(r.replace(/```json/g,'').replace(/```/g,'').trim())); } catch(e){} } isAiLoading.value=false; };
-                const translateToJapanese = async () => { if (!translateInput.value) return; isTranslating.value=true; translateResult.value = ''; translateRomaji.value = ''; const res = await callGemini(`Translate to JP: "${translateInput.value}". JSON: {"ja":"","romaji":""}`); if(res) { try { const d = JSON.parse(res.replace(/```json/g,'').replace(/```/g,'').trim()); translateResult.value = d.ja; translateRomaji.value = d.romaji; } catch(e) { translateResult.value = res; } } isTranslating.value=false; };
+                const generateNotes = async () => { 
+                    if (!form.value.name) return;
+                    isAiLoading.value = true; 
+                    try {
+                        const res = await callGemini(`繁體中文簡介「${form.value.name}」特色與建議 (100字內)`);
+                        if (res) form.value.notes = res;
+                    } finally { isAiLoading.value = false; }
+                };
+
+                const recommendShopping = async () => { 
+                    isAiLoading.value = true; 
+                    try {
+                        const res = await callGemini(`推薦 3 個${tripSettings.value.location}必買伴手禮或藥妝。只回傳 JSON Array，格式: [{"name":"商品名"}]`);
+                        if (res) {
+                            const items = JSON.parse(cleanJson(res));
+                            if (Array.isArray(items)) shoppingList.value.push(...items.map(i => ({ name: i.name, image: null })));
+                        }
+                    } catch (e) { console.error(e); } finally { isAiLoading.value = false; }
+                };
+
+                const translateToJapanese = async () => { 
+                    if (!translateInput.value) return; 
+                    isTranslating.value = true; 
+                    try {
+                        const res = await callGemini(`Translate to Japanese. JSON format: {"ja":"...", "romaji":"..."}. Text: "${translateInput.value}"`);
+                        if (res) {
+                            const d = JSON.parse(cleanJson(res));
+                            translateResult.value = d.ja; translateRomaji.value = d.romaji;
+                        }
+                    } catch (e) { translateResult.value = "翻譯失敗"; } finally { isTranslating.value = false; }
+                };
 
                 const openGoogleTranslate = () => window.open(`https://translate.google.com/?sl=auto&tl=ja&text=${encodeURIComponent(translateInput.value)}`, '_blank');
                 
                 const openAddModal = () => { if (activeTab.value === 'expenses') { modalMode.value = 'expenses'; isEditingExpense.value = false; expenseForm.value = { category: '飲食', name: '', date: tripSettings.value.startDate, amount: '', payment: '現金', isSplit: false, splitMembers: [] }; } else { modalMode.value = activeTab.value; isEditing.value = false; form.value = { category: 'spot', name: '', hours: '', ticket: '', notes: '', cost: '', locationQuery: '', transportType: 'train', transportTime: '15分' }; } showModal.value = true; };
+                
+                const editShoppingItem = (item, index) => {
+                    modalMode.value = 'shopping';
+                    shoppingForm.value = { ...item };
+                    editingShoppingIndex.value = index;
+                    showModal.value = true;
+                };
+
+                const saveShoppingItem = () => {
+                    if (editingShoppingIndex.value !== null) {
+                        shoppingList.value[editingShoppingIndex.value] = { ...shoppingForm.value };
+                        editingShoppingIndex.value = null;
+                    } else {
+                        shoppingList.value.push({...shoppingForm.value});
+                    }
+                    closeModal();
+                };
+
                 const editItem = (item) => { modalMode.value = activeTab.value; isEditing.value = true; editingId.value = item.id; form.value = {...item}; showModal.value = true; };
-                const closeModal = () => { showModal.value = false; showDeleteConfirm.value = false; };
+                const closeModal = () => { showModal.value = false; showDeleteConfirm.value = false; editingShoppingIndex.value = null; };
                 const saveItem = () => { const newItem = { ...form.value, dayIndex: currentDayIndex.value, id: isEditing.value ? editingId.value : Date.now() }; if (!newItem.coords) newItem.coords = [35.6895, 139.6917]; if(isEditing.value) { const i = itineraryItems.value.findIndex(x=>x.id===editingId.value); if(i!==-1) itineraryItems.value[i] = newItem; } else { itineraryItems.value.push(newItem); } closeModal(); if(isMapMode.value) nextTick(updateMapMarkers); };
                 const confirmDelete = () => { showDeleteConfirm.value = true; };
                 const executeDelete = () => { if(modalMode.value === 'expenses') { manualExpenses.value = manualExpenses.value.filter(x => x.id !== expenseEditingId.value); } else { itineraryItems.value = itineraryItems.value.filter(x => x.id !== editingId.value); } closeModal(); if(isMapMode.value) nextTick(updateMapMarkers); };
                 const handleImageUpload = (e) => { const f=e.target.files[0]; if(f){ const r=new FileReader(); r.onload=(ev)=>shoppingForm.value.image=ev.target.result; r.readAsDataURL(f); } };
-                const saveShoppingItem = () => { shoppingList.value.push({...shoppingForm.value}); closeModal(); };
                 const openReservationModal = () => { modalMode.value = 'reservation'; reservationForm.value = { category: '交通', name: '', image: null, notes: '' }; showModal.value = true; };
                 const handleReservationImageUpload = (e) => { const f=e.target.files[0]; if(f){ const r=new FileReader(); r.onload=(ev)=>reservationForm.value.image=ev.target.result; r.readAsDataURL(f); } };
                 const saveReservation = () => { reservationList.value.push({...reservationForm.value}); showModal.value = false; };
@@ -900,12 +862,8 @@
                 const saveExpense = () => { const d = { ...expenseForm.value }; if (isEditingExpense.value) { if (expenseEditingSource.value === 'itinerary') { const idx = itineraryItems.value.findIndex(i => i.id === linkedItineraryId.value); if (idx !== -1) { itineraryItems.value[idx].cost = d.amount; itineraryItems.value[idx].splitMembers = d.splitMembers; } } else { const idx = manualExpenses.value.findIndex(e => e.id === expenseEditingId.value); if (idx !== -1) manualExpenses.value[idx] = { ...d, id: expenseEditingId.value }; } } else { manualExpenses.value.unshift({ ...d, id: Date.now() }); } closeModal(); };
                 const editExpense = (item) => { modalMode.value = 'expenses'; isEditingExpense.value = true; expenseEditingId.value = item.id; expenseForm.value = { ...item, splitMembers: item.splitMembers || [] }; expenseForm.isSplit = item.splitMembers?.length > 0; if (item.isFromItinerary) { expenseEditingSource.value = 'itinerary'; linkedItineraryId.value = item._rawId; } else { expenseEditingSource.value = 'manual'; linkedItineraryId.value = null; } showModal.value = true; };
                 const deleteExpense = () => { showDeleteConfirm.value = true; };
-
-                // Flight Summary Edit Methods
                 const openEditFlightSummary = () => { modalMode.value = 'editFlightSummary'; flightSummaryForm.value = JSON.parse(JSON.stringify(flightData.value)); showModal.value = true; };
                 const saveFlightSummary = () => { flightData.value = { ...flightSummaryForm.value }; showModal.value = false; };
-                
-                // Custom Info Methods
                 const openAddCustomInfo = () => { modalMode.value = 'customInfo'; customInfoForm.value = { title: '', content: '' }; showModal.value = true; };
                 const saveCustomInfo = () => { customInfoList.value.push({ ...customInfoForm.value, id: Date.now() }); showModal.value = false; };
                 const deleteCustomInfo = (index) => { customInfoList.value.splice(index, 1); };
@@ -922,12 +880,11 @@
                     isMapMode, toggleMapMode, changeDay, locateUser, googleMapOverviewUrl, navMapUrl, openNavModal, openRealGoogleMaps, navTarget,
                     reservationList, reservationForm, openReservationModal, handleReservationImageUpload, saveReservation, getReservationIcon, openImagePreview, previewImageUrl,
                     editExpense, isEditingExpense, deleteExpense, addCompanion, removeCompanion, toggleSplitMember, perPersonTotals,
-                    // New Methods
                     speakText, openImportModal, importItinerary, importText, isImporting,
-                    // Flight Summary Edit
                     flightSummaryForm, openEditFlightSummary, saveFlightSummary,
-                    // Custom Info
-                    customInfoList, customInfoForm, openAddCustomInfo, saveCustomInfo, deleteCustomInfo
+                    customInfoList, customInfoForm, openAddCustomInfo, saveCustomInfo, deleteCustomInfo,
+                    editShoppingItem, editingShoppingIndex,
+                    apiKey, hasApiKey, setApiKey
                 };
             }
         }).mount('#app');
