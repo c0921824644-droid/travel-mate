@@ -115,6 +115,12 @@
             background: transparent;
             border: none;
         }
+        
+        /* Toast Notification */
+        .toast-enter-active, .toast-leave-active { transition: all 0.3s ease; }
+        .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateY(-20px) translateX(-50%); }
+        .toast-enter-to, .toast-leave-from { opacity: 1; transform: translateY(0) translateX(-50%); }
+
         /* Fade Transitions */
         .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
         .fade-enter-from, .fade-leave-to { opacity: 0; }
@@ -130,6 +136,14 @@
         <!-- 頂部裝飾 -->
         <div class="absolute top-0 left-0 w-full h-48 bg-gradient-to-b from-gray-100 to-transparent -z-10"></div>
         
+        <!-- Toast 通知 (全域) -->
+        <transition name="toast">
+            <div v-if="toast.show" :class="['fixed top-4 left-1/2 transform -translate-x-1/2 z-[100] px-6 py-3 rounded-full shadow-lg text-sm font-bold flex items-center space-x-2 min-w-[200px] justify-center', toast.type === 'error' ? 'bg-red-500 text-white' : 'bg-jp-black text-white']">
+                <i :class="['fas', toast.type === 'error' ? 'fa-exclamation-circle' : 'fa-check-circle']"></i>
+                <span>{{ toast.message }}</span>
+            </div>
+        </transition>
+
         <!-- 主要內容區域 -->
         <main class="flex-1 overflow-y-auto hide-scrollbar pb-24 relative z-10 flex flex-col px-4 sm:px-6" ref="scrollContainer">
             
@@ -153,7 +167,7 @@
                     <!-- 右側：天氣與設定 -->
                     <div class="text-right flex flex-col items-end gap-2">
                         <!-- Key 設定按鈕 -->
-                        <button @click="setApiKey" class="text-[10px] text-gray-400 bg-white/50 border border-gray-200 px-2 py-1 rounded-full hover:bg-white hover:text-jp-blue transition-colors flex items-center">
+                        <button @click="openKeyModal" class="text-[10px] text-gray-400 bg-white/50 border border-gray-200 px-2 py-1 rounded-full hover:bg-white hover:text-jp-blue transition-colors flex items-center">
                             <i class="fas fa-key mr-1"></i> {{ hasApiKey ? '已設定 Key' : '設定 Key' }}
                         </button>
                         
@@ -200,7 +214,7 @@
                     <button v-if="activeTab === 'expenses'" @click="openAddModal" class="text-xs bg-jp-black text-white px-3 py-2 rounded-full shadow-md flex items-center active:scale-95 transition">
                         <i class="fas fa-plus mr-1.5"></i> 記一筆
                     </button>
-                    <button v-if="activeTab !== 'shopping' && activeTab !== 'expenses'" @click="setApiKey" class="text-[10px] text-gray-400 bg-white border border-gray-200 px-2 py-1 rounded-full hover:bg-gray-50 transition-colors">
+                    <button v-if="activeTab !== 'shopping' && activeTab !== 'expenses'" @click="openKeyModal" class="text-[10px] text-gray-400 bg-white border border-gray-200 px-2 py-1 rounded-full hover:bg-gray-50 transition-colors">
                         <i class="fas fa-key"></i>
                     </button>
                 </div>
@@ -446,6 +460,14 @@
                             <button @click="closeModal" class="w-8 h-8 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center hover:bg-gray-200"><i class="fas fa-times"></i></button>
                         </div>
 
+                        <!-- Key 設定 Modal -->
+                        <div v-if="modalMode === 'apiKey'" class="space-y-5">
+                            <p class="text-sm text-gray-500">請輸入您的 Google Gemini API Key 以啟用 AI 功能。</p>
+                            <input v-model="tempApiKey" type="text" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-gray-800 text-sm" placeholder="AIza...">
+                            <div class="text-xs text-red-400" v-if="!tempApiKey">請輸入 API Key</div>
+                            <button @click="saveApiKey" class="w-full py-3.5 bg-jp-black text-white rounded-xl font-bold text-sm shadow-lg">儲存設定</button>
+                        </div>
+
                         <!-- 旅程設定 -->
                          <div v-if="modalMode === 'tripSettings'" class="space-y-5">
                             <div><label class="text-xs text-gray-400 font-bold mb-1 block">旅程名稱</label><input v-model="tripForm.title" type="text" class="w-full bg-gray-50 border-0 rounded-xl p-3 text-gray-800"></div>
@@ -549,6 +571,15 @@
                     apiKey.value = INTERNAL_API_KEY;
                 }
                 
+                // --- Toast Notification ---
+                const toast = reactive({ show: false, message: '', type: 'info' });
+                const showToast = (message, type = 'info') => {
+                    toast.message = message;
+                    toast.type = type;
+                    toast.show = true;
+                    setTimeout(() => { toast.show = false; }, 3000);
+                };
+
                 const activeTab = ref('itinerary');
                 const showModal = ref(false);
                 const showDeleteConfirm = ref(false);
@@ -570,6 +601,7 @@
                 const companions = ref([{ id: 'me', name: '我' }, { id: 'friend1', name: '小明' }]);
                 const newCompanionName = ref('');
                 const tripForm = ref({ ...tripSettings.value });
+                const tempApiKey = ref('');
 
                 const customInfoList = ref([{ id: 1, title: 'Wi-Fi', content: 'SSID: Hotel_Guest\nPass: welcome123' }]);
                 const customInfoForm = ref({ title: '', content: '' });
@@ -616,6 +648,7 @@
                     if(modalMode.value==='imagePreview')return '預覽'; 
                     if(modalMode.value==='customInfo')return '新增資訊';
                     if(modalMode.value==='editFlightSummary')return '編輯航班';
+                    if(modalMode.value==='apiKey')return '設定 API Key';
                     if(activeTab.value==='itinerary')return isEditing.value?'編輯行程':'新增行程'; 
                     if(modalMode.value==='expenses')return isEditingExpense.value?'編輯花費':'新增花費'; 
                     if(modalMode.value === 'shopping') return editingShoppingIndex.value !== null ? '編輯商品' : '新增商品';
@@ -669,7 +702,7 @@
                     textArea.style.position = "fixed"; textArea.style.left = "-9999px";
                     document.body.appendChild(textArea);
                     textArea.focus(); textArea.select();
-                    try { document.execCommand('copy'); } catch (err) { console.error('Copy failed', err); }
+                    try { document.execCommand('copy'); showToast("已複製", "success"); } catch (err) { console.error('Copy failed', err); }
                     document.body.removeChild(textArea);
                 };
 
@@ -719,48 +752,51 @@
                     return s;
                 };
 
-                // --- 1. Set API Key Manually ---
-                const setApiKey = () => {
-                    const input = prompt("請輸入您的 Google Gemini API Key (AIza開頭)：", apiKey.value);
-                    if (input !== null) {
-                        const newKey = input.trim();
-                        apiKey.value = newKey;
-                        localStorage.setItem('gemini_api_key', newKey);
-                        if (newKey) alert("API Key 已儲存！");
-                    }
+                // --- Key Modal Logic ---
+                const openKeyModal = () => {
+                    tempApiKey.value = apiKey.value;
+                    modalMode.value = 'apiKey';
+                    showModal.value = true;
                 };
 
-                // --- 2. Call Gemini (Robust) ---
+                const saveApiKey = () => {
+                    if (!tempApiKey.value) return;
+                    apiKey.value = tempApiKey.value.trim();
+                    localStorage.setItem('gemini_api_key', apiKey.value);
+                    showModal.value = false;
+                    showToast("API Key 已儲存", "success");
+                };
+
+                const setApiKey = () => {
+                    openKeyModal(); // Redirect to new modal logic
+                };
+
+                // --- 2. Call Gemini (Improved for "No Response") ---
                 const callGemini = async (promptText) => {
-                    // Check local file
                     if (window.location.protocol === 'file:') {
-                        alert("⚠️ 請勿直接雙擊開啟 HTML！\n請使用 VS Code 的 Live Server，否則 AI 功能會被瀏覽器安全機制阻擋。");
+                        showToast("請勿直接開啟 HTML，請使用伺服器", "error");
                         return null;
                     }
 
-                    // Models to try - Prioritize the stable public model for external deployment
-                    // The 2.5-preview model is often restricted to specific preview environments.
+                    // 1. Check Key Presence FIRST
+                    if (!apiKey.value) {
+                        openKeyModal();
+                        showToast("請先輸入 API Key", "error");
+                        // We throw specific error to break flow, but handled by modal opening
+                        return null;
+                    }
+
                     const models = ['gemini-1.5-flash', 'gemini-2.5-flash-preview-09-2025'];
                     let lastError = "";
 
-                    // Timeout controller (15s)
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
                     try {
                         for (const model of models) {
                             try {
-                                // Construct URL
-                                // The preview environment might intercept specific patterns. 
-                                // We include the key param even if empty to match standard patterns.
-                                let url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-                                if (apiKey.value) {
-                                    url += `?key=${apiKey.value}`;
-                                } else {
-                                    // Optimistic attempt for environment injection
-                                    url += `?key=`;
-                                }
-
+                                let url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.value}`;
+                                
                                 const response = await fetch(url, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
@@ -772,40 +808,30 @@
                                     const data = await response.json();
                                     return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
                                 } else {
-                                    // If we failed with an empty key, and we are on the first model, maybe we really need a key?
-                                    // But we continue to try fallback or throw error.
-                                    if (response.status === 404) continue; 
-                                    
-                                    // If 400/403 and key was empty, it means environment didn't inject it.
-                                    if ((response.status === 400 || response.status === 403) && !apiKey.value) {
-                                        throw new Error("請設定 API Key");
-                                    }
-
                                     const err = await response.json();
-                                    // If we are iterating and it's not the last model, try the next one.
+                                    const errMsg = err.error?.message || "Unknown Error";
+                                    console.error(`Model ${model} Error ${response.status}:`, errMsg);
+                                    
+                                    // Specifically handle 400 (Bad Request) or 403 (Forbidden)
+                                    if (response.status === 400 || response.status === 403) {
+                                        throw new Error(`API 錯誤 (${response.status}): 請檢查 Key 權限或是否正確`);
+                                    }
+                                    
+                                    // If not last model, try next
                                     if (model !== models[models.length - 1]) continue;
-
-                                    throw new Error(`API Error (${response.status}): ${err.error?.message}`);
+                                    throw new Error(`API Error (${response.status}): ${errMsg}`);
                                 }
                             } catch (e) {
                                 console.warn(`Model ${model} failed:`, e);
                                 lastError = e.message;
-                                if (e.name === 'AbortError') throw new Error("連線逾時，請檢查網路狀況。");
-                                // If specific error "Please set API Key", stop trying other models and throw immediately
-                                if (e.message === "請設定 API Key") throw e;
+                                if (e.name === 'AbortError') throw new Error("連線逾時，請檢查網路");
+                                // If specifically our thrown error, rethrow
+                                if (e.message.includes("API 錯誤")) throw e;
                             }
                         }
                     } catch (e) {
-                        if (e.message === "請設定 API Key") {
-                            const input = prompt("AI 功能需要 API Key，請輸入 (AIza...)：");
-                            if (input) {
-                                apiKey.value = input.trim();
-                                localStorage.setItem('gemini_api_key', apiKey.value);
-                                return await callGemini(promptText); // Retry recursively once
-                            }
-                        } else {
-                            alert(e.message || lastError || "AI 連線失敗，請檢查 Key 或網路。");
-                        }
+                        showToast(e.message || "AI 連線失敗", "error");
+                        console.error("Final Gemini Error:", e);
                     } finally {
                         clearTimeout(timeoutId);
                     }
@@ -827,10 +853,13 @@
                                 const maxDay = Math.max(...newItems.map(i => i.dayIndex || 0));
                                 if (maxDay >= tripSettings.value.duration) { tripForm.value.duration = maxDay + 1; saveTripSettings(); }
                                 showModal.value = false;
-                                alert("匯入成功！");
+                                showToast("匯入成功", "success");
                             }
                         }
-                    } catch (e) { alert("無法解析內容，請重試"); } finally { isImporting.value = false; }
+                    } catch (e) { 
+                        console.error(e);
+                        showToast("無法解析內容，請重試", "error"); 
+                    } finally { isImporting.value = false; }
                 };
 
                 const generateNotes = async () => { 
@@ -922,7 +951,8 @@
                     flightSummaryForm, openEditFlightSummary, saveFlightSummary,
                     customInfoList, customInfoForm, openAddCustomInfo, saveCustomInfo, deleteCustomInfo,
                     editShoppingItem, editingShoppingIndex,
-                    apiKey, hasApiKey, setApiKey
+                    apiKey, hasApiKey, setApiKey,
+                    toast, showToast, openKeyModal, saveApiKey, tempApiKey
                 };
             }
         }).mount('#app');
