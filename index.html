@@ -152,6 +152,7 @@
 
                     <!-- 右側：天氣與設定 -->
                     <div class="text-right flex flex-col items-end gap-2">
+                        <!-- Key 設定按鈕 -->
                         <button @click="setApiKey" class="text-[10px] text-gray-400 bg-white/50 border border-gray-200 px-2 py-1 rounded-full hover:bg-white hover:text-jp-blue transition-colors flex items-center">
                             <i class="fas fa-key mr-1"></i> {{ hasApiKey ? '已設定 Key' : '設定 Key' }}
                         </button>
@@ -537,6 +538,17 @@
                 const apiKey = ref(defaultKey);
                 const hasApiKey = computed(() => !!apiKey.value && apiKey.value.length > 20);
                 
+                // --- 設定區域 ---
+                // ⚠️ 警告：將 API Key 寫死在程式碼中並上傳到 GitHub 是不安全的！
+                // 別人可以透過「檢視原始碼」竊取您的 Key。
+                // 如果這是公開專案，強烈建議維持空字串，讓使用者自行輸入。
+                const INTERNAL_API_KEY = "AIzaSyCg5IAYIj1OzupZMxj_q9nuOaquBnEC5Zs"; // 在這裡填入您的 Key (例如 "AIza...")
+                
+                // 初始 Key 邏輯：優先使用 localStorage，如果沒有則使用硬編碼的 Key
+                if (!apiKey.value && INTERNAL_API_KEY) {
+                    apiKey.value = INTERNAL_API_KEY;
+                }
+                
                 const activeTab = ref('itinerary');
                 const showModal = ref(false);
                 const showDeleteConfirm = ref(false);
@@ -726,9 +738,9 @@
                         return null;
                     }
 
-                    // Models to try - Prioritize the preview model as per environment instructions
-                    // Fallback to 1.5 flash for personal key usage outside preview env
-                    const models = ['gemini-2.5-flash-preview-09-2025', 'gemini-1.5-flash'];
+                    // Models to try - Prioritize the stable public model for external deployment
+                    // The 2.5-preview model is often restricted to specific preview environments.
+                    const models = ['gemini-1.5-flash', 'gemini-2.5-flash-preview-09-2025'];
                     let lastError = "";
 
                     // Timeout controller (15s)
@@ -770,6 +782,9 @@
                                     }
 
                                     const err = await response.json();
+                                    // If we are iterating and it's not the last model, try the next one.
+                                    if (model !== models[models.length - 1]) continue;
+
                                     throw new Error(`API Error (${response.status}): ${err.error?.message}`);
                                 }
                             } catch (e) {
