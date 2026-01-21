@@ -27,7 +27,7 @@
                         'jp-card-hover': '#2d2d2d', // 卡片懸停
                         'jp-text-primary': '#e5e5e5', // 文字：和紙白
                         'jp-text-secondary': '#a3a3a3', // 文字：灰鼠
-                        'jp-border': '#555555',     // 邊框：加強對比的中灰 (原 #333)
+                        'jp-border': '#555555',     // 邊框：加強對比的中灰
                         'jp-input': '#2c2c2c',      // 輸入框背景
                         'jp-blue': '#7aa2f7',       // 點綴藍
                         'jp-red': '#f7768e',        // 點綴紅
@@ -87,7 +87,7 @@
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
         .draggable-item {
-            transition: transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.2s;
+            transition: transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.2s, padding-bottom 0.3s ease; /* 增加 padding 動畫 */
             touch-action: pan-y; 
             position: relative;
             transform-origin: center center;
@@ -153,6 +153,15 @@
 
         ::placeholder { color: #666; opacity: 1; }
         ::selection { background: #3e4c5e; color: #fff; }
+        
+        /* 針對時間輸入框在暗色模式下的優化 */
+        input[type="time"]::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            cursor: pointer;
+        }
+        
+        /* 進度條動畫 */
+        .progress-bar { transition: width 1s ease-in-out; }
     </style>
 </head>
 <body class="text-jp-text-primary overflow-hidden relative">
@@ -269,6 +278,13 @@
                             <span class="text-xl font-bold">{{ day.date }}</span>
                         </button>
                     </div>
+                    
+                    <!-- 自動排序按鈕 -->
+                    <div class="flex justify-end mt-2 px-1" v-if="!isMapMode && currentDayItems.length > 1">
+                        <button @click="sortItemsByTime" class="text-[10px] text-jp-blue hover:text-white flex items-center bg-[#2c2c2c] px-2 py-1 rounded border border-gray-700 active:scale-95 transition-transform">
+                            <i class="fas fa-sort-amount-down-alt mr-1"></i> 按時間排序
+                        </button>
+                    </div>
                 </div>
 
                 <!-- 內容區域 -->
@@ -286,22 +302,24 @@
                             :key="item.id"
                             :data-index="index"
                             :data-id="item.id"
-                            class="relative pl-12 pb-8 group draggable-item select-none" 
+                            class="relative pl-12 group draggable-item select-none" 
                             :class="{ 
                                 'last-item': index === currentDayItems.length - 1,
                                 'is-dragging': dragState.draggingId === item.id
                             }" 
+                            :style="{ paddingBottom: calculateSpacing(index) }"
                             @touchstart="handleTouchStart($event, item)" 
                             @mousedown="handleMouseDown($event, item)" 
                         >
                             <!-- 時間軸線 -->
                             <div class="timeline-line"></div>
                             
-                            <!-- 交通時間 (深色氣泡) -->
+                            <!-- 交通時間 (深色氣泡 - 顯示時間差) -->
                             <div v-if="shouldShowTransport(index, item)" class="absolute left-[12px] -top-3 w-6 flex flex-col items-center z-10">
-                                <div class="bg-[#1a1a1a] text-gray-400 text-[10px] px-2 py-0.5 rounded-full border border-gray-600 flex items-center whitespace-nowrap transform -translate-x-1/2 ml-3 shadow-sm">
+                                <div class="bg-[#1a1a1a] text-gray-400 text-[10px] px-2 py-0.5 rounded-full border border-gray-600 flex items-center whitespace-nowrap transform -translate-x-1/2 ml-3 shadow-sm z-20">
                                     <i :class="[getTransportIcon(item.transportType), 'mr-1']"></i>
-                                    {{ item.transportTime || '15分' }}
+                                    <!-- 優先顯示自動計算的時間差，若無則顯示備註 -->
+                                    {{ calculateTimeGap(index) || item.transportTime || '移動' }}
                                 </div>
                             </div>
                             
@@ -532,6 +550,21 @@
             <!-- TAB 5: 花費 -->
             <div v-if="activeTab === 'expenses'" class="space-y-4">
                 <div class="jp-card p-6 bg-gradient-to-br from-[#252525] to-[#1a1a1a] text-white shadow-lg border border-gray-600"><p class="text-gray-400 text-xs mb-1 uppercase tracking-widest">Total Expenses</p><h2 class="text-4xl font-mono font-bold mb-1 text-jp-text-primary">¥{{ totalExpenses.toLocaleString() }}</h2><p class="text-gray-500 text-xs text-right">≈ NT$ {{ Math.round(totalExpenses * exchangeRate).toLocaleString() }}</p></div>
+                
+                <!-- 新增：分類統計條 -->
+                <div class="jp-card p-4 border border-gray-700">
+                    <h3 class="text-xs font-bold text-gray-500 mb-3 uppercase tracking-widest">花費分類</h3>
+                    <div class="flex h-3 rounded-full overflow-hidden bg-[#2c2c2c] mb-3">
+                        <div v-for="stat in expenseStats" :key="stat.category" :style="{ width: stat.percentage + '%', backgroundColor: stat.color }" class="h-full progress-bar"></div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div v-for="stat in expenseStats" :key="stat.category" class="flex items-center text-[10px] text-gray-400">
+                            <span class="w-2 h-2 rounded-full mr-1.5" :style="{ backgroundColor: stat.color }"></span>
+                            <span class="truncate">{{ stat.category }} {{ stat.percentage }}%</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="jp-card p-5" v-if="companions.length > 0"><h3 class="text-xs font-bold text-gray-500 mb-4 uppercase tracking-widest">分帳概覽</h3><div class="space-y-3"><div v-for="person in perPersonTotals" :key="person.name" class="flex justify-between items-center text-sm border-b border-gray-700 pb-2 last:border-0 last:pb-0"><span class="font-medium text-gray-300">{{ person.name }}</span><span class="font-mono text-gray-400">¥{{ person.total.toLocaleString() }}</span></div></div></div>
                 <div class="jp-card p-4 flex items-center justify-between text-xs text-gray-400"><div class="flex items-center"><span class="mr-2">匯率設定</span>1 JPY = <input type="number" v-model="exchangeRate" class="w-16 mx-1 text-center border-b border-gray-600 focus:border-jp-text-primary outline-none bg-transparent font-bold text-jp-text-primary" step="0.001"> TWD</div><button @click="fetchExchangeRate" class="text-gray-500 hover:text-jp-blue"><i class="fas fa-sync-alt"></i></button></div>
                 <div class="jp-card overflow-hidden"><div v-for="(exp, index) in allExpenses" :key="index" class="p-4 border-b border-gray-700 flex items-center justify-between last:border-0 hover:bg-[#252525] transition-colors cursor-pointer" @click="editExpense(exp)"><div class="flex items-center"><div class="w-10 h-10 rounded-full bg-[#2c2c2c] flex items-center justify-center text-gray-400 mr-3 text-sm"><i :class="getExpenseIcon(exp.category)"></i></div><div><h4 class="font-bold text-gray-200 text-sm flex items-center">{{ exp.name }} <span v-if="exp.isFromItinerary" class="text-[9px] border border-gray-600 text-gray-500 px-1 rounded ml-2 font-normal">行程</span></h4><p class="text-xs text-gray-500 mt-0.5">{{ exp.date }}</p></div></div><div class="text-right font-mono text-sm text-gray-300">¥{{ Number(exp.amount).toLocaleString() }}</div></div></div>
@@ -595,6 +628,9 @@
                                     <div><label class="text-xs text-gray-500 block mb-1">時間</label><input v-model="flightSummaryForm.departure.duration" type="text" class="w-full bg-jp-input rounded-lg p-2 text-sm text-gray-200 border-none"></div>
                                     <div><label class="text-xs text-gray-500 block mb-1">起飛</label><input v-model="flightSummaryForm.departure.departTime" type="time" class="w-full bg-jp-input rounded-lg p-2 text-sm text-gray-200 border-none"></div>
                                     <div><label class="text-xs text-gray-500 block mb-1">抵達</label><input v-model="flightSummaryForm.departure.arriveTime" type="time" class="w-full bg-jp-input rounded-lg p-2 text-sm text-gray-200 border-none"></div>
+                                    <!-- 新增機場代碼欄位 -->
+                                    <div><label class="text-xs text-gray-500 block mb-1">出發機場</label><input v-model="flightSummaryForm.departure.departAirport" type="text" class="w-full bg-jp-input rounded-lg p-2 text-sm text-gray-200 border-none" placeholder="TPE"></div>
+                                    <div><label class="text-xs text-gray-500 block mb-1">抵達機場</label><input v-model="flightSummaryForm.departure.arriveAirport" type="text" class="w-full bg-jp-input rounded-lg p-2 text-sm text-gray-200 border-none" placeholder="NRT"></div>
                                 </div>
                             </div>
                             <div class="space-y-4">
@@ -604,6 +640,9 @@
                                     <div><label class="text-xs text-gray-500 block mb-1">時間</label><input v-model="flightSummaryForm.return.duration" type="text" class="w-full bg-jp-input rounded-lg p-2 text-sm text-gray-200 border-none"></div>
                                     <div><label class="text-xs text-gray-500 block mb-1">起飛</label><input v-model="flightSummaryForm.return.departTime" type="time" class="w-full bg-jp-input rounded-lg p-2 text-sm text-gray-200 border-none"></div>
                                     <div><label class="text-xs text-gray-500 block mb-1">抵達</label><input v-model="flightSummaryForm.return.arriveTime" type="time" class="w-full bg-jp-input rounded-lg p-2 text-sm text-gray-200 border-none"></div>
+                                    <!-- 新增機場代碼欄位 -->
+                                    <div><label class="text-xs text-gray-500 block mb-1">出發機場</label><input v-model="flightSummaryForm.return.departAirport" type="text" class="w-full bg-jp-input rounded-lg p-2 text-sm text-gray-200 border-none" placeholder="NRT"></div>
+                                    <div><label class="text-xs text-gray-500 block mb-1">抵達機場</label><input v-model="flightSummaryForm.return.arriveAirport" type="text" class="w-full bg-jp-input rounded-lg p-2 text-sm text-gray-200 border-none" placeholder="TPE"></div>
                                 </div>
                             </div>
                             <button @click="saveFlightSummary" class="w-full py-3.5 bg-jp-text-primary text-jp-dark rounded-xl font-bold text-sm shadow-lg hover:bg-white">儲存資訊</button>
@@ -628,10 +667,39 @@
 
                         <!-- 行程編輯 -->
                         <div v-if="modalMode === 'itinerary'" class="space-y-5">
-                            <div class="grid grid-cols-3 gap-3"><div class="col-span-1"><label class="text-xs text-gray-500 font-bold mb-1 block">時間</label><input v-model="form.hours" type="text" class="w-full bg-jp-input border-0 rounded-xl p-3 text-gray-200 font-mono placeholder-gray-600" placeholder="10:00"></div><div class="col-span-2"><label class="text-xs text-gray-500 font-bold mb-1 block">名稱</label><input v-model="form.name" type="text" class="w-full bg-jp-input border-0 rounded-xl p-3 text-gray-200 placeholder-gray-600" placeholder="行程名稱"></div></div>
+                            <div class="grid grid-cols-3 gap-3"><div class="col-span-1"><label class="text-xs text-gray-500 font-bold mb-1 block">時間</label><input v-model="form.hours" type="time" class="w-full bg-jp-input border-0 rounded-xl p-3 text-gray-200 font-mono placeholder-gray-600" placeholder="10:00"></div><div class="col-span-2"><label class="text-xs text-gray-500 font-bold mb-1 block">名稱</label><input v-model="form.name" type="text" class="w-full bg-jp-input border-0 rounded-xl p-3 text-gray-200 placeholder-gray-600" placeholder="行程名稱"></div></div>
                             <div><label class="text-xs text-gray-500 font-bold mb-2 block">分類</label><div class="flex flex-wrap gap-2"><span v-for="cat in categoryOptions" @click="form.category = cat.val" :class="['px-3 py-2 rounded-xl text-xs font-medium cursor-pointer transition-all border', form.category === cat.val ? 'bg-jp-text-primary text-jp-dark border-jp-text-primary' : 'bg-[#2c2c2c] text-gray-400 border-gray-600 hover:bg-[#3a3a3a]']"><i :class="['fas mr-1.5', cat.icon]"></i> {{ cat.label }}</span></div></div>
-                            <div class="bg-[#252525] p-4 rounded-xl border border-gray-700 space-y-3"><div class="flex items-center space-x-3"><i class="fas fa-map-marker-alt text-gray-500 w-5 text-center"></i><input v-model="form.locationQuery" type="text" class="bg-transparent w-full outline-none text-sm placeholder-gray-600 text-gray-300" placeholder="地圖搜尋關鍵字 (選填)"></div><div class="w-full h-px bg-gray-700"></div><div class="flex items-center space-x-3"><i class="fas fa-yen-sign text-gray-500 w-5 text-center"></i><input v-model="form.cost" type="number" class="bg-transparent w-full outline-none text-sm placeholder-gray-600 text-gray-300 font-mono" placeholder="花費金額 (選填)"></div></div>
-                            <div v-if="!isEditing"><label class="text-xs text-gray-500 font-bold mb-2 block">交通方式</label><div class="flex space-x-2"><button v-for="t in ['walk','train','car','other']" :key="t" @click="form.transportType = t" :class="['flex-1 py-2 rounded-xl border text-xs transition-colors flex items-center justify-center', form.transportType === t ? 'bg-gray-700 text-white border-gray-600' : 'text-gray-500 border-gray-700 hover:bg-[#2c2c2c]']"><i :class="['mr-1', getTransportIcon(t)]"></i> {{ getTransportLabel(t) }}</button></div></div>
+                            
+                            <!-- 專屬航班編輯區塊 (雙向同步) -->
+                            <div v-if="form.category === 'flight'" class="bg-blue-900/20 p-4 rounded-xl border border-blue-800 space-y-3 animate-pulse-once">
+                                <h4 class="text-xs font-bold text-blue-300 flex items-center"><i class="fas fa-plane mr-2"></i> 航班詳細資訊 (同步更新)</h4>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div><label class="text-[10px] text-gray-400 block mb-1">航班代號</label><input v-model="form.flightCode" class="w-full bg-jp-input rounded-lg p-2 text-sm text-gray-200 border-none" placeholder="BR198"></div>
+                                    <div><label class="text-[10px] text-gray-400 block mb-1">飛行時間</label><input v-model="form.flightDuration" class="w-full bg-jp-input rounded-lg p-2 text-sm text-gray-200 border-none" placeholder="3h 30m"></div>
+                                    <div><label class="text-[10px] text-gray-400 block mb-1">起飛時間</label><input type="time" v-model="form.departTime" class="w-full bg-jp-input rounded-lg p-2 text-sm text-gray-200 border-none"></div>
+                                    <div><label class="text-[10px] text-gray-400 block mb-1">抵達時間</label><input type="time" v-model="form.arriveTime" class="w-full bg-jp-input rounded-lg p-2 text-sm text-gray-200 border-none"></div>
+                                    <div><label class="text-[10px] text-gray-400 block mb-1">出發機場</label><input v-model="form.departAirport" class="w-full bg-jp-input rounded-lg p-2 text-sm text-gray-200 border-none" placeholder="TPE"></div>
+                                    <div><label class="text-[10px] text-gray-400 block mb-1">抵達機場</label><input v-model="form.arriveAirport" class="w-full bg-jp-input rounded-lg p-2 text-sm text-gray-200 border-none" placeholder="NRT"></div>
+                                </div>
+                            </div>
+
+                            <div class="bg-[#252525] p-4 rounded-xl border border-gray-700 space-y-3">
+                                <div class="flex items-center space-x-3"><i class="fas fa-map-marker-alt text-gray-500 w-5 text-center"></i><input v-model="form.locationQuery" type="text" class="bg-transparent w-full outline-none text-sm placeholder-gray-600 text-gray-300" placeholder="地圖搜尋關鍵字 (選填)"></div>
+                                <div class="w-full h-px bg-gray-700"></div>
+                                <div class="flex items-center space-x-3"><i class="fas fa-yen-sign text-gray-500 w-5 text-center"></i><input v-model="form.cost" type="number" class="bg-transparent w-full outline-none text-sm placeholder-gray-600 text-gray-300 font-mono" placeholder="花費金額 (選填)"></div>
+                                <div class="w-full h-px bg-gray-700"></div>
+                                <div>
+                                    <label class="text-xs text-gray-500 font-bold mb-2 block">交通方式與備註</label>
+                                    <div class="flex items-center space-x-2 mb-2">
+                                        <button v-for="t in ['walk','train','car','other']" :key="t" @click="form.transportType = t" :class="['flex-1 py-1.5 rounded-lg border text-xs transition-colors flex items-center justify-center', form.transportType === t ? 'bg-gray-700 text-white border-gray-600' : 'text-gray-500 border-gray-700 hover:bg-[#2c2c2c]']"><i :class="['mr-1', getTransportIcon(t)]"></i> {{ getTransportLabel(t) }}</button>
+                                    </div>
+                                    <div class="flex items-center space-x-2">
+                                         <i class="fas fa-pen text-gray-500 w-5 text-center text-xs"></i>
+                                         <input v-model="form.transportTime" type="text" class="bg-transparent w-full outline-none text-sm placeholder-gray-600 text-gray-300" placeholder="交通備註 (選填，若有時間會自動計算)">
+                                    </div>
+                                </div>
+                            </div>
+                            
                             <div><div class="flex justify-between items-center mb-1"><label class="text-xs text-gray-500 font-bold">筆記</label><button @click="generateNotes" :disabled="isAiLoading" class="text-xs text-jp-blue hover:underline disabled:opacity-50 flex items-center"><span v-if="isAiLoading" class="spinner w-3 h-3 mr-1"></span><i v-else class="fas fa-magic mr-1"></i>AI 攻略</button></div><textarea v-model="form.notes" rows="3" class="w-full bg-jp-input border-0 rounded-xl p-3 text-sm text-gray-200 resize-none placeholder-gray-600" placeholder="輸入備註..."></textarea></div>
                             <div class="flex space-x-3 mt-6"><button v-if="isEditing" @click="confirmDelete" class="flex-1 py-3.5 bg-red-900/30 text-red-400 rounded-xl font-bold text-sm hover:bg-red-900/50">刪除</button><button @click="saveItem" class="flex-1 py-3.5 bg-jp-text-primary text-jp-dark rounded-xl font-bold text-sm shadow-lg hover:bg-white">儲存</button></div>
                         </div>
@@ -660,27 +728,16 @@
     <script>
         const { createApp, ref, computed, onMounted, onUnmounted, reactive, nextTick, watch } = Vue;
         
-        // 初始 Key (這裡放一個空字串，讓使用者自己輸入會比較安全且不容易出錯)
-        // 系統會自動從 localStorage 讀取上次輸入的
+        // 初始 Key
         const defaultKey = localStorage.getItem('gemini_api_key') || "";
 
         createApp({
             setup() {
                 const apiKey = ref(defaultKey);
                 const hasApiKey = computed(() => !!apiKey.value && apiKey.value.length > 20);
+                const INTERNAL_API_KEY = "";
+                if (!apiKey.value && INTERNAL_API_KEY) apiKey.value = INTERNAL_API_KEY;
                 
-                // --- 設定區域 ---
-                // ⚠️ 警告：將 API Key 寫死在程式碼中並上傳到 GitHub 是不安全的！
-                // 別人可以透過「檢視原始碼」竊取您的 Key。
-                // 如果這是公開專案，強烈建議維持空字串，讓使用者自行輸入。
-                const INTERNAL_API_KEY = ""; // 在這裡填入您的 Key (例如 "AIza...")
-                
-                // 初始 Key 邏輯：優先使用 localStorage，如果沒有則使用硬編碼的 Key
-                if (!apiKey.value && INTERNAL_API_KEY) {
-                    apiKey.value = INTERNAL_API_KEY;
-                }
-                
-                // --- Toast Notification ---
                 const toast = reactive({ show: false, message: '', type: 'info' });
                 const showToast = (message, type = 'info') => {
                     toast.message = message;
@@ -689,7 +746,6 @@
                     setTimeout(() => { toast.show = false; }, 3000);
                 };
 
-                // --- 資料載入 Helper ---
                 const loadData = (key, defaultVal) => {
                     try {
                         const stored = localStorage.getItem(key);
@@ -700,6 +756,29 @@
                     }
                 };
 
+                // 圖片壓縮 Helper (專家優化重點 - 提升品質)
+                const compressImage = (base64Str, maxWidth = 1200, quality = 0.8) => {
+                    return new Promise((resolve) => {
+                        const img = new Image();
+                        img.src = base64Str;
+                        img.onload = () => {
+                            const canvas = document.createElement('canvas');
+                            let width = img.width;
+                            let height = img.height;
+                            if (width > maxWidth) {
+                                height = Math.round((height * maxWidth) / width);
+                                width = maxWidth;
+                            }
+                            canvas.width = width;
+                            canvas.height = height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0, width, height);
+                            resolve(canvas.toDataURL('image/jpeg', quality));
+                        };
+                        img.onerror = () => resolve(base64Str);
+                    });
+                };
+
                 const activeTab = ref('itinerary');
                 const showModal = ref(false);
                 const showDeleteConfirm = ref(false);
@@ -708,7 +787,6 @@
                 const currentDayIndex = ref(0);
                 const currencyInput = ref(1000);
                 const currencyOutput = ref(223); 
-                // 從 storage 載入匯率，若無則預設
                 const exchangeRate = ref(Number(localStorage.getItem('trip_exchange_rate')) || 0.223);
                 const isAiLoading = ref(false);
                 const modalMode = ref('itinerary');
@@ -720,7 +798,6 @@
                 const dragState = reactive({ isLongPressing: false, draggingId: null, ghostId: null, timer: null, startY: 0 });
                 const fileInput = ref(null);
                 
-                // --- 載入資料 (Persistent Data) ---
                 const tripSettings = ref(loadData('trip_settings', { title: '東京之旅', location: 'Tokyo, Japan', startDate: '2026-10-06', duration: 5 }));
                 const companions = ref(loadData('trip_companions', [{ id: 'me', name: '我' }, { id: 'friend1', name: '小明' }]));
                 const newCompanionName = ref('');
@@ -732,13 +809,12 @@
                 const importText = ref('');
                 const isImporting = ref(false);
 
-                const form = ref({ category: 'spot', name: '', hours: '', ticket: '', notes: '', cost: '', locationQuery: '', transportType: 'train', transportTime: '15分', flightCode: '', departAirport: '', arriveAirport: '', arriveTime: '', flightDuration: '' });
+                const form = ref({ category: 'spot', name: '', hours: '', ticket: '', notes: '', cost: '', locationQuery: '', transportType: 'train', transportTime: '', flightCode: '', departAirport: '', arriveAirport: '', arriveTime: '', flightDuration: '' });
                 const shoppingForm = ref({ name: '', image: null });
                 const expenseForm = ref({ category: '飲食', name: '', date: '', amount: '', payment: '現金', isSplit: false, splitMembers: [] });
                 const flightSummaryForm = ref({ departure: {}, return: {} }); 
                 const editingShoppingIndex = ref(null);
 
-                // --- 翻譯相關 ---
                 const translateInput = ref(''); 
                 const translateResult = ref(''); 
                 const translateRomaji = ref(''); 
@@ -747,29 +823,38 @@
                 const phraseCategories = ref([{ id: 'greet', name: '問候' }, { id: 'food', name: '點餐' }, { id: 'shop', name: '購物' }, { id: 'traffic', name: '交通' }]);
                 const phrasesData = { greet: [{ ja: 'こんにちは', romaji: 'Konnichiwa', zh: '你好' }, { ja: 'ありがとうございます', romaji: 'Arigatou', zh: '謝謝' }, { ja: 'すみません', romaji: 'Sumimasen', zh: '不好意思' }], food: [{ ja: 'メニューをください', romaji: 'Menu wo kudasai', zh: '請給我菜單' }, { ja: 'お会計お願いします', romaji: 'Okaikei onegaishimasu', zh: '麻煩結帳' }], shop: [{ ja: 'いくらですか？', romaji: 'Ikura desu ka?', zh: '多少錢？' }, { ja: '免税できますか？', romaji: 'Menzei dekimasu ka?', zh: '可退稅嗎？' }, { ja: 'これをください', romaji: 'Kore wo kudasai', zh: '我要買這個' }], traffic: [{ ja: '駅はどこですか？', romaji: 'Eki wa doko desu ka?', zh: '車站在哪？' }, { ja: 'トイレはどこですか？', romaji: 'Toire wa doko desu ka?', zh: '廁所在哪？' }] };
                 
-                // 圖片翻譯
                 const transFileInput = ref(null);
                 const translationImage = ref(null);
                 const imageTranslationResult = ref(null);
 
-                // 語音變數
-                let availableVoices = [];
-
-                const loadVoices = () => {
-                    availableVoices = window.speechSynthesis.getVoices();
+                // --- Key Modal Logic ---
+                const openKeyModal = () => {
+                    tempApiKey.value = apiKey.value;
+                    modalMode.value = 'apiKey';
+                    showModal.value = true;
                 };
 
-                // Initial load
+                const saveApiKey = () => {
+                    if (!tempApiKey.value) return;
+                    apiKey.value = tempApiKey.value.trim();
+                    localStorage.setItem('gemini_api_key', apiKey.value);
+                    showModal.value = false;
+                    showToast("API Key 已儲存", "success");
+                };
+
+                const setApiKey = () => {
+                    openKeyModal(); 
+                };
+
+                let availableVoices = [];
+                const loadVoices = () => { availableVoices = window.speechSynthesis.getVoices(); };
                 loadVoices();
-                if (window.speechSynthesis.onvoiceschanged !== undefined) {
-                    window.speechSynthesis.onvoiceschanged = loadVoices;
-                }
+                if (window.speechSynthesis.onvoiceschanged !== undefined) window.speechSynthesis.onvoiceschanged = loadVoices;
 
                 const categoryOptions = [ { val: 'spot', label: '景點', icon: 'fa-map-marker-alt' }, { val: 'food', label: '美食', icon: 'fa-utensils' }, { val: 'shopping', label: '逛街', icon: 'fa-shopping-bag' }, { val: 'hotel', label: '住宿', icon: 'fa-bed' }, { val: 'flight', label: '航班', icon: 'fa-plane' }, { val: 'other', label: '彈性', icon: 'fa-star' } ];
                 const flightData = ref(loadData('trip_flight_data', { departure: { code: 'BR198', departTime: '08:50', departAirport: 'TPE', arriveTime: '13:15', arriveAirport: 'NRT', duration: '3h 25m' }, return: { code: 'BR197', departTime: '14:15', departAirport: 'NRT', arriveTime: '16:55', arriveAirport: 'TPE', duration: '3h 40m' } }));
                 const weatherForecast = ref([ { temp: 24, feelsLike: 26, icon: 'fas fa-sun', iconColor: '#e0af68', outfit: '短袖', outfitIcon: 'fa-tshirt' }, { temp: 22, feelsLike: 23, icon: 'fas fa-cloud', iconColor: '#a3a3a3', outfit: '長袖', outfitIcon: 'fa-user' }, { temp: 19, feelsLike: 18, icon: 'fas fa-cloud-rain', iconColor: '#7aa2f7', outfit: '雨具', outfitIcon: 'fa-umbrella' }, { temp: 20, feelsLike: 21, icon: 'fas fa-cloud-sun', iconColor: '#e0af68', outfit: '洋蔥式', outfitIcon: 'fa-layer-group' }, { temp: 18, feelsLike: 17, icon: 'fas fa-wind', iconColor: '#7aa2f7', outfit: '防風', outfitIcon: 'fa-wind' } ]);
                 
-                // 預設行程資料 (只有第一次開啟或清除資料後會用到)
                 const defaultItinerary = [
                     { id: 1, dayIndex: 0, category: 'flight', flightType: 'departure', name: 'BR198 去程', hours: '08:50', cost: 0, notes: '記得帶護照', locationQuery: 'Taoyuan Airport', transportType: 'car', transportTime: '40分', flightCode: 'BR198', departTime: '08:50', arriveTime: '13:15', departAirport: 'TPE', arriveAirport: 'NRT', flightDuration: '3h 25m', coords: [35.7719, 140.3906], splitMembers: [] },
                     { id: 2, dayIndex: 0, category: 'hotel', name: '新宿格拉斯麗飯店', hours: '15:00', cost: 45000, notes: '哥吉拉飯店', transportType: 'train', transportTime: '65分', coords: [35.6954, 139.7035], splitMembers: ['me', 'friend1'] },
@@ -777,16 +862,13 @@
                     { id: 4, dayIndex: 1, category: 'spot', name: '淺草寺雷門', hours: '09:00', cost: 0, notes: '早點去', transportType: 'train', transportTime: '25分', coords: [35.7147, 139.7966], splitMembers: [] }
                 ];
                 const itineraryItems = ref(loadData('trip_itinerary', defaultItinerary));
-                
                 const shoppingList = ref(loadData('trip_shopping', [{ name: '合力他命', image: null }]));
                 const manualExpenses = ref(loadData('trip_expenses', [{ id: 101, category: '交通', name: '西瓜卡', date: '2026-10-06', amount: 3000, payment: '現金', isSplit: false, splitMembers: ['me'] }]));
                 const isEditingExpense = ref(false); const expenseEditingId = ref(null); const expenseEditingSource = ref(null); const linkedItineraryId = ref(null);
-                
                 const reservationList = ref(loadData('trip_reservations', [{ category: '交通', name: 'N\'EX', image: null, notes: '10/6 14:00' }]));
                 const reservationForm = ref({ category: '交通', name: '', image: null, notes: '' });
                 const previewImageUrl = ref('');
 
-                // --- 資料自動儲存監聽 (Watchers) ---
                 watch(tripSettings, (newVal) => localStorage.setItem('trip_settings', JSON.stringify(newVal)), { deep: true });
                 watch(companions, (newVal) => localStorage.setItem('trip_companions', JSON.stringify(newVal)), { deep: true });
                 watch(itineraryItems, (newVal) => localStorage.setItem('trip_itinerary', JSON.stringify(newVal)), { deep: true });
@@ -797,108 +879,83 @@
                 watch(customInfoList, (newVal) => localStorage.setItem('trip_custom_info', JSON.stringify(newVal)), { deep: true });
                 watch(exchangeRate, (newVal) => localStorage.setItem('trip_exchange_rate', newVal));
 
-                // --- 匯出/匯入功能 ---
                 const exportData = () => {
-                    const data = {
-                        tripSettings: tripSettings.value,
-                        companions: companions.value,
-                        itineraryItems: itineraryItems.value,
-                        shoppingList: shoppingList.value,
-                        manualExpenses: manualExpenses.value,
-                        reservationList: reservationList.value,
-                        flightData: flightData.value,
-                        customInfoList: customInfoList.value,
-                        exchangeRate: exchangeRate.value,
-                        exportDate: new Date().toISOString()
-                    };
-                    
+                    const data = { tripSettings: tripSettings.value, companions: companions.value, itineraryItems: itineraryItems.value, shoppingList: shoppingList.value, manualExpenses: manualExpenses.value, reservationList: reservationList.value, flightData: flightData.value, customInfoList: customInfoList.value, exchangeRate: exchangeRate.value, exportDate: new Date().toISOString() };
                     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
                     const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `TravelMate_Backup_${new Date().toLocaleDateString().replace(/\//g, '-')}.json`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                    showToast("備份檔案已下載", "success");
+                    const a = document.createElement('a'); a.href = url; a.download = `TravelMate_Backup_${new Date().toLocaleDateString().replace(/\//g, '-')}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); showToast("備份檔案已下載", "success");
                 };
 
-                const triggerImport = () => {
-                    fileInput.value.click();
-                };
-
+                const triggerImport = () => { fileInput.value.click(); };
                 const handleFileImport = (event) => {
                     const file = event.target.files[0];
                     if (!file) return;
-
                     const reader = new FileReader();
                     reader.onload = (e) => {
                         try {
                             const data = JSON.parse(e.target.result);
-                            
-                            // 簡易驗證資料結構
                             if (data.tripSettings && data.itineraryItems) {
                                 if(!confirm("確定要匯入備份嗎？這將會覆蓋您目前的資料。")) return;
-
-                                tripSettings.value = data.tripSettings || tripSettings.value;
-                                companions.value = data.companions || [];
-                                itineraryItems.value = data.itineraryItems || [];
-                                shoppingList.value = data.shoppingList || [];
-                                manualExpenses.value = data.manualExpenses || [];
-                                reservationList.value = data.reservationList || [];
-                                flightData.value = data.flightData || flightData.value;
-                                customInfoList.value = data.customInfoList || [];
-                                exchangeRate.value = data.exchangeRate || 0.223;
-                                
-                                showToast("資料匯入成功！", "success");
-                                showModal.value = false;
-                                
-                                // Reset file input
-                                event.target.value = '';
-                            } else {
-                                alert("無效的備份檔案格式");
-                            }
-                        } catch (err) {
-                            console.error(err);
-                            alert("讀取檔案失敗");
-                        }
+                                tripSettings.value = data.tripSettings || tripSettings.value; companions.value = data.companions || []; itineraryItems.value = data.itineraryItems || []; shoppingList.value = data.shoppingList || []; manualExpenses.value = data.manualExpenses || []; reservationList.value = data.reservationList || []; flightData.value = data.flightData || flightData.value; customInfoList.value = data.customInfoList || []; exchangeRate.value = data.exchangeRate || 0.223;
+                                showToast("資料匯入成功！", "success"); showModal.value = false; event.target.value = '';
+                            } else { alert("無效的備份檔案格式"); }
+                        } catch (err) { console.error(err); alert("讀取檔案失敗"); }
                     };
                     reader.readAsText(file);
                 };
 
-                // --- 重置資料功能 ---
                 const resetAllData = () => {
                     if(!confirm("確定要重置所有資料嗎？此操作無法復原。")) return;
-                    localStorage.removeItem('trip_settings');
-                    localStorage.removeItem('trip_companions');
-                    localStorage.removeItem('trip_itinerary');
-                    localStorage.removeItem('trip_shopping');
-                    localStorage.removeItem('trip_expenses');
-                    localStorage.removeItem('trip_reservations');
-                    localStorage.removeItem('trip_flight_data');
-                    localStorage.removeItem('trip_custom_info');
-                    localStorage.removeItem('trip_exchange_rate');
+                    localStorage.clear();
                     location.reload();
+                };
+
+                const sortItemsByTime = () => {
+                    const dayItems = itineraryItems.value.filter(item => item.dayIndex === currentDayIndex.value);
+                    const otherItems = itineraryItems.value.filter(item => item.dayIndex !== currentDayIndex.value);
+                    dayItems.sort((a, b) => (a.hours || '').localeCompare(b.hours || ''));
+                    itineraryItems.value = [...otherItems, ...dayItems];
+                    showToast("行程已按時間排序", "success");
+                };
+
+                const calculateTimeGap = (idx) => {
+                    if (idx === 0) return null;
+                    const current = currentDayItems.value[idx];
+                    const prev = currentDayItems.value[idx - 1];
+                    if (!current.hours || !prev.hours) return null;
+                    const [h1, m1] = prev.hours.split(':').map(Number);
+                    const [h2, m2] = current.hours.split(':').map(Number);
+                    const min1 = h1 * 60 + m1;
+                    const min2 = h2 * 60 + m2;
+                    let diff = min2 - min1;
+                    if (diff < 0) diff += 24 * 60;
+                    const h = Math.floor(diff / 60);
+                    const m = diff % 60;
+                    if (h > 0) return `${h}小時${m > 0 ? m + '分' : ''}`;
+                    return `${m}分鐘`;
+                };
+
+                const calculateSpacing = (idx) => {
+                    const basePadding = 32;
+                    if (idx === currentDayItems.value.length - 1) return basePadding + 'px';
+                    const current = currentDayItems.value[idx];
+                    const next = currentDayItems.value[idx + 1];
+                    if (!current.hours || !next.hours) return basePadding + 'px';
+                    const [h1, m1] = current.hours.split(':').map(Number);
+                    const [h2, m2] = next.hours.split(':').map(Number);
+                    const min1 = h1 * 60 + m1;
+                    const min2 = h2 * 60 + m2;
+                    let diff = min2 - min1;
+                    if (diff < 0) diff += 24 * 60;
+                    const extraPadding = Math.min(diff * 0.5, 100);
+                    return (basePadding + extraPadding) + 'px';
                 };
 
                 const getTabTitle = computed(() => ({ itinerary: '行程表', info: '旅遊資訊', translation: '隨身翻譯', shopping: '購物清單', expenses: '旅遊花費' }[activeTab.value]));
                 const getTabIcon = (tab) => ({ itinerary: 'fa-map-marked-alt', info: 'fa-info-circle', translation: 'fa-language', shopping: 'fa-shopping-basket', expenses: 'fa-yen-sign' }[tab]);
                 const getTabText = (tab) => ({ itinerary: '行程', info: '資訊', translation: '翻譯', shopping: '購物', expenses: '花費' }[tab]);
                 const modalTitle = computed(() => { 
-                    if(modalMode.value==='tripSettings')return '旅程設定'; 
-                    if(modalMode.value==='import')return 'AI 匯入行程'; 
-                    if(modalMode.value==='translation')return '隨身翻譯'; 
-                    if(modalMode.value==='nav')return navTarget.value.name; 
-                    if(modalMode.value==='reservation')return '新增憑證'; 
-                    if(modalMode.value==='imagePreview')return '預覽'; 
-                    if(modalMode.value==='customInfo')return '新增資訊';
-                    if(modalMode.value==='editFlightSummary')return '編輯航班';
-                    if(modalMode.value==='apiKey')return '設定 API Key';
-                    if(activeTab.value==='itinerary')return isEditing.value?'編輯行程':'新增行程'; 
-                    if(modalMode.value==='expenses')return isEditingExpense.value?'編輯花費':'新增花費'; 
-                    if(modalMode.value === 'shopping') return editingShoppingIndex.value !== null ? '編輯商品' : '新增商品';
-                    return '新增'; 
+                    if(modalMode.value==='tripSettings')return '旅程設定'; if(modalMode.value==='import')return 'AI 匯入行程'; if(modalMode.value==='translation')return '隨身翻譯'; if(modalMode.value==='nav')return navTarget.value.name; if(modalMode.value==='reservation')return '新增憑證'; if(modalMode.value==='imagePreview')return '預覽'; if(modalMode.value==='customInfo')return '新增資訊'; if(modalMode.value==='editFlightSummary')return '編輯航班'; if(modalMode.value==='apiKey')return '設定 API Key'; if(activeTab.value==='itinerary')return isEditing.value?'編輯行程':'新增行程'; if(modalMode.value==='expenses')return isEditingExpense.value?'編輯花費':'新增花費'; if(modalMode.value === 'shopping') return editingShoppingIndex.value !== null ? '編輯商品' : '新增商品'; return '新增'; 
                 });
                 const currentDayItems = computed(() => itineraryItems.value.filter(item => item.dayIndex === currentDayIndex.value));
                 const currentWeather = computed(() => weatherForecast.value[currentDayIndex.value] || { temp: '--', feelsLike: '--', icon: 'fas fa-question', iconColor: '#ccc', outfit: '-', outfitIcon: 'fa-question' });
@@ -907,12 +964,42 @@
                 const allExpenses = computed(() => { const fromItinerary = itineraryItems.value.filter(item => item.cost && item.cost > 0).map(item => ({ id: 'itin_' + item.id, category: item.category==='food'?'飲食':item.category==='shopping'?'購物':item.category==='hotel'?'住宿':'其他', name: item.name, date: dynamicDays.value[item.dayIndex]?.date || 'Day '+(item.dayIndex+1), amount: item.cost, payment: '未知', isFromItinerary: true, isSplit: item.splitMembers?.length>0, splitMembers: item.splitMembers||[], _rawId: item.id })); return [...manualExpenses.value, ...fromItinerary]; });
                 const totalExpenses = computed(() => allExpenses.value.reduce((acc, curr) => acc + Number(curr.amount), 0));
                 const perPersonTotals = computed(() => { const totals = {}; companions.value.forEach(c => totals[c.id] = 0); allExpenses.value.forEach(exp => { const amount = Number(exp.amount) || 0; const members = exp.splitMembers?.length > 0 ? exp.splitMembers : ['me']; const per = amount / members.length; members.forEach(mid => { if (totals[mid] !== undefined) totals[mid] += per; else { if (!totals['me']) totals['me'] = 0; totals['me'] += per; } }); }); return companions.value.map(c => ({ name: c.name, total: Math.round(totals[c.id]) })); });
+                
+                // 花費統計 (專家優化)
+                const expenseStats = computed(() => {
+                    const stats = {};
+                    let total = 0;
+                    allExpenses.value.forEach(exp => {
+                        const amount = Number(exp.amount) || 0;
+                        if (!stats[exp.category]) stats[exp.category] = 0;
+                        stats[exp.category] += amount;
+                        total += amount;
+                    });
+                    const colors = { '飲食': '#e0af68', '購物': '#bb9af7', '住宿': '#7aa2f7', '交通': '#9ece6a', '門票': '#f7768e', '其他': '#a3a3a3' };
+                    return Object.keys(stats).map(cat => ({
+                        category: cat,
+                        amount: stats[cat],
+                        percentage: total > 0 ? Math.round((stats[cat] / total) * 100) : 0,
+                        color: colors[cat] || '#ccc'
+                    })).sort((a, b) => b.amount - a.amount);
+                });
+
                 const dynamicDays = computed(() => { const d=[]; const s=new Date(tripSettings.value.startDate); const w=['SUN','MON','TUE','WED','THU','FRI','SAT']; for(let i=0;i<tripSettings.value.duration;i++){ const x=new Date(s); x.setDate(s.getDate()+i); d.push({weekday:w[x.getDay()],date:x.getDate().toString()}); } return d; });
                 const formattedDateRange = computed(() => { const s=new Date(tripSettings.value.startDate); const e=new Date(s); e.setDate(s.getDate()+tripSettings.value.duration-1); return `${s.getFullYear()}/${s.getMonth()+1}/${s.getDate()} - ${e.getMonth()+1}/${e.getDate()}`; });
                 const googleMapOverviewUrl = computed(() => { const t = currentDayItems.value.length > 0 ? (currentDayItems.value[0].locationQuery || currentDayItems.value[0].name) : tripSettings.value.location; return `https://maps.google.com/maps?q=${encodeURIComponent(t)}&t=&z=13&ie=UTF8&iwloc=&output=embed`; });
                 const navMapUrl = computed(() => `https://maps.google.com/maps?q=${encodeURIComponent(navTarget.value.query || navTarget.value.name)}&t=&z=15&ie=UTF8&iwloc=&output=embed`);
 
-                const toggleMapMode = () => { isMapMode.value = !isMapMode.value; if(isMapMode.value) nextTick(() => { if(!map) initMap(); updateMapMarkers(); }); };
+                const toggleMapMode = () => { 
+                    isMapMode.value = !isMapMode.value; 
+                    if(isMapMode.value) {
+                        nextTick(() => { 
+                            if(!map) initMap(); 
+                            updateMapMarkers(); 
+                            // 專家優化: 確保地圖正確渲染
+                            setTimeout(() => { if(map) map.invalidateSize(); }, 200);
+                        }); 
+                    }
+                };
                 let map = null; let markers = [];
                 const initMap = () => { 
                     if (map) return; 
@@ -921,7 +1008,38 @@
                     map = L.map('map-container', {zoomControl: false}).setView([35.6895, 139.6917], 12); 
                     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map); 
                 };
-                const updateMapMarkers = () => { if (!map) return; markers.forEach(m => map.removeLayer(m)); markers = []; const bounds = []; currentDayItems.value.forEach(item => { if (item.coords) { const icon = L.divIcon({ className: 'custom-div-icon', html: `<div style="background-color:#7aa2f7;width:12px;height:12px;border-radius:50%;border:2px solid white;box-shadow: 0 0 5px rgba(0,0,0,0.5);"></div>`, iconSize: [12, 12] }); const m = L.marker(item.coords, { icon }).addTo(map); markers.push(m); bounds.push(item.coords); } }); if (bounds.length) map.fitBounds(bounds, { padding: [50, 50] }); };
+                const updateMapMarkers = () => { 
+                    if (!map) return; 
+                    markers.forEach(m => map.removeLayer(m)); 
+                    markers = []; 
+                    const bounds = []; 
+                    currentDayItems.value.forEach(item => { 
+                        if (item.coords) { 
+                            const icon = L.divIcon({ 
+                                className: 'custom-div-icon', 
+                                html: `<div style="background-color:#7aa2f7;width:12px;height:12px;border-radius:50%;border:2px solid white;box-shadow: 0 0 5px rgba(0,0,0,0.5);"></div>`, 
+                                iconSize: [12, 12] 
+                            }); 
+                            const m = L.marker(item.coords, { icon }).addTo(map);
+                            
+                            // --- NEW: Add Popup ---
+                            const googleMapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.locationQuery || item.name)}`;
+                            const popupContent = `
+                                <div style="text-align: center; color: #333;">
+                                    <b style="font-size: 14px;">${item.name}</b><br>
+                                    <a href="${googleMapUrl}" target="_blank" style="color: #5e81ac; text-decoration: none; font-size: 12px; font-weight: bold; margin-top: 4px; display: inline-block;">
+                                        <i class="fas fa-external-link-alt"></i> 開啟 Google Map
+                                    </a>
+                                </div>`;
+                            m.bindPopup(popupContent);
+                            // ---------------------
+
+                            markers.push(m); 
+                            bounds.push(item.coords); 
+                        } 
+                    }); 
+                    if (bounds.length) map.fitBounds(bounds, { padding: [50, 50] }); 
+                };
 
                 const openTripSettings = () => { modalMode.value = 'tripSettings'; tripForm.value = { ...tripSettings.value }; showModal.value = true; };
                 const saveTripSettings = () => { 
@@ -935,31 +1053,14 @@
                 const changeDay = (i) => { currentDayIndex.value = i; if(isMapMode.value) nextTick(updateMapMarkers); };
                 
                 const speakText = (text, lang = 'ja-JP') => {
-                    if (!window.speechSynthesis) {
-                        showToast("您的瀏覽器不支援朗讀", "error");
-                        return;
-                    }
-                    
-                    window.speechSynthesis.cancel(); // Stop previous
-
+                    if (!window.speechSynthesis) { showToast("您的瀏覽器不支援朗讀", "error"); return; }
+                    window.speechSynthesis.cancel();
                     const u = new SpeechSynthesisUtterance(text);
                     u.lang = lang;
-                    
-                    // Crucial: Find a matching voice!
-                    // Try exact match first, then language code match
                     if (availableVoices.length === 0) availableVoices = window.speechSynthesis.getVoices();
-                    
-                    const voice = availableVoices.find(v => v.lang === lang) || 
-                                  availableVoices.find(v => v.lang.startsWith(lang.split('-')[0]));
-                                  
-                    if (voice) {
-                        u.voice = voice;
-                        // console.log("Using voice:", voice.name);
-                    } else {
-                        console.warn("No specific voice found for", lang);
-                    }
-                    
-                    u.rate = 0.9; // Slightly slower for better clarity
+                    const voice = availableVoices.find(v => v.lang === lang) || availableVoices.find(v => v.lang.startsWith(lang.split('-')[0]));
+                    if (voice) u.voice = voice;
+                    u.rate = 0.9;
                     window.speechSynthesis.speak(u);
                 };
 
@@ -975,7 +1076,22 @@
                 };
 
                 const updateTime = () => { const now = new Date(); currentTime.value = now.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false }); currentWeekday.value = ['SUN','MON','TUE','WED','THU','FRI','SAT'][now.getDay()]; };
-                const fetchExchangeRate = () => { const mockRate = (0.21 + Math.random() * 0.03).toFixed(3); exchangeRate.value = Number(mockRate); };
+                
+                // 專家優化: 真實匯率 API
+                const fetchExchangeRate = async () => { 
+                    try {
+                        const res = await fetch('https://api.exchangerate-api.com/v4/latest/JPY');
+                        const data = await res.json();
+                        if (data && data.rates && data.rates.TWD) {
+                            exchangeRate.value = data.rates.TWD;
+                            showToast("已更新為即時匯率", "success");
+                        }
+                    } catch (e) {
+                        console.error("Rate fetch failed", e);
+                        // Fallback logic remains as mocked value if failed
+                    }
+                };
+                
                 const updateTwd = () => { currencyOutput.value = Math.round((currencyInput.value || 0) * exchangeRate.value); };
                 const updateJpy = () => { currencyInput.value = Math.round((currencyOutput.value || 0) / exchangeRate.value); };
                 watch(exchangeRate, () => { updateTwd(); });
@@ -1000,44 +1116,6 @@
                 const onGlobalMove = (e) => { if (!dragState.isLongPressing) return; e.preventDefault(); let clientY = e.touches ? e.touches[0].clientY : e.clientY; const element = document.elementFromPoint(window.innerWidth / 2, clientY); const targetRow = element?.closest('.draggable-item'); if (targetRow && targetRow.dataset.index) { const targetIndex = parseInt(targetRow.dataset.index); const draggingId = dragState.draggingId; if (targetIndex !== undefined && draggingId) { const curIdx = currentDayItems.value.findIndex(i => i.id === draggingId); const tgtIdx = currentDayItems.value.findIndex((_, idx) => idx === targetIndex); if (curIdx !== -1 && tgtIdx !== -1 && curIdx !== tgtIdx) { const itemA = currentDayItems.value[curIdx]; const itemB = currentDayItems.value[tgtIdx]; const mainIndexA = itineraryItems.value.indexOf(itemA); const mainIndexB = itineraryItems.value.indexOf(itemB); if (mainIndexA > -1 && mainIndexB > -1) { const temp = itineraryItems.value[mainIndexA]; itineraryItems.value[mainIndexA] = itineraryItems.value[mainIndexB]; itineraryItems.value[mainIndexB] = temp; if(navigator.vibrate) navigator.vibrate(20); } } } } };
                 const onGlobalEnd = () => { clearTimeout(dragState.timer); dragState.isLongPressing = false; dragState.draggingId = null; window.removeEventListener('touchmove', onGlobalMove); window.removeEventListener('touchend', onGlobalEnd); window.removeEventListener('mousemove', onGlobalMove); window.removeEventListener('mouseup', onGlobalEnd); };
                 const handleTouchMove = () => {}; const handleTouchEnd = () => clearTimeout(dragState.timer);
-
-                // --- Helper: Clean JSON ---
-                const cleanJson = (str) => {
-                    if (!str) return null;
-                    // Remove markdown code blocks
-                    let s = str.replace(/```json/g, '').replace(/```/g, '').trim();
-                    // Try to find first [ or {
-                    const firstBracket = s.indexOf('[');
-                    const firstBrace = s.indexOf('{');
-                    const start = (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) ? firstBracket : firstBrace;
-                    if (start !== -1) s = s.substring(start);
-                    
-                    // Try to find last ] or }
-                    const lastBracket = s.lastIndexOf(']');
-                    const lastBrace = s.lastIndexOf('}');
-                    const end = Math.max(lastBracket, lastBrace);
-                    if (end !== -1) s = s.substring(0, end + 1);
-                    return s;
-                };
-
-                // --- Key Modal Logic ---
-                const openKeyModal = () => {
-                    tempApiKey.value = apiKey.value;
-                    modalMode.value = 'apiKey';
-                    showModal.value = true;
-                };
-
-                const saveApiKey = () => {
-                    if (!tempApiKey.value) return;
-                    apiKey.value = tempApiKey.value.trim();
-                    localStorage.setItem('gemini_api_key', apiKey.value);
-                    showModal.value = false;
-                    showToast("API Key 已儲存", "success");
-                };
-
-                const setApiKey = () => {
-                    openKeyModal(); // Redirect to new modal logic
-                };
 
                 // --- 2. Call Gemini (Improved for "No Response") ---
                 // Modified to handle optional image data
@@ -1176,38 +1254,135 @@
                     } catch (e) { translateResult.value = "翻譯失敗"; } finally { isTranslating.value = false; }
                 };
 
-                // 新增：圖片翻譯相關功能
-                const triggerPhotoTranslation = () => {
-                    transFileInput.value.click();
+                // 專家優化：圖片壓縮邏輯
+                const handleImageUpload = async (e) => { 
+                    const f=e.target.files[0]; 
+                    if(f){ 
+                        const r=new FileReader(); 
+                        r.onload= async (ev)=> {
+                            shoppingForm.value.image = await compressImage(ev.target.result); // 壓縮
+                        }; 
+                        r.readAsDataURL(f); 
+                    } 
+                };
+                const openReservationModal = () => { modalMode.value = 'reservation'; reservationForm.value = { category: '交通', name: '', image: null, notes: '' }; showModal.value = true; };
+                const handleReservationImageUpload = (e) => { 
+                    const f=e.target.files[0]; 
+                    if(f){ 
+                        const r=new FileReader(); 
+                        r.onload= async (ev)=> {
+                            reservationForm.value.image = await compressImage(ev.target.result); // 壓縮
+                        }; 
+                        r.readAsDataURL(f); 
+                    } 
+                };
+                const saveReservation = () => { reservationList.value.push({...reservationForm.value}); showModal.value = false; };
+                const getReservationIcon = (c) => ({ '交通':'fa-train', '住宿':'fa-bed' }[c] || 'fa-file');
+                const openImagePreview = (url) => { if(url) { previewImageUrl.value = url; modalMode.value = 'imagePreview'; showModal.value = true; } };
+                const saveExpense = () => { const d = { ...expenseForm.value }; if (isEditingExpense.value) { if (expenseEditingSource.value === 'itinerary') { const idx = itineraryItems.value.findIndex(i => i.id === linkedItineraryId.value); if (idx !== -1) { itineraryItems.value[idx].cost = d.amount; itineraryItems.value[idx].splitMembers = d.splitMembers; } } else { const idx = manualExpenses.value.findIndex(e => e.id === expenseEditingId.value); if (idx !== -1) manualExpenses.value[idx] = { ...d, id: expenseEditingId.value }; } } else { manualExpenses.value.unshift({ ...d, id: Date.now() }); } closeModal(); };
+                const editExpense = (item) => { modalMode.value = 'expenses'; isEditingExpense.value = true; expenseEditingId.value = item.id; expenseForm.value = { ...item, splitMembers: item.splitMembers || [] }; expenseForm.isSplit = item.splitMembers?.length > 0; if (item.isFromItinerary) { expenseEditingSource.value = 'itinerary'; linkedItineraryId.value = item._rawId; } else { expenseEditingSource.value = 'manual'; linkedItineraryId.value = null; } showModal.value = true; };
+                const deleteExpense = () => { showDeleteConfirm.value = true; };
+                const openEditFlightSummary = () => { modalMode.value = 'editFlightSummary'; flightSummaryForm.value = JSON.parse(JSON.stringify(flightData.value)); showModal.value = true; };
+                
+                // === 修正：航班同步邏輯 (資訊頁 -> 行程表) ===
+                const saveFlightSummary = () => { 
+                    // 1. 更新主記錄
+                    flightData.value = { ...flightSummaryForm.value }; 
+                    
+                    // 2. 同步至行程表中的航班卡片
+                    itineraryItems.value.forEach(item => {
+                        if (item.category === 'flight' && item.flightType) {
+                            const type = item.flightType; // 'departure' or 'return'
+                            if (flightData.value[type]) {
+                                const info = flightData.value[type];
+                                item.flightCode = info.code;
+                                item.departTime = info.departTime;
+                                item.arriveTime = info.arriveTime;
+                                item.flightDuration = info.duration;
+                                // 同步機場代碼
+                                item.departAirport = info.departAirport; 
+                                item.arriveAirport = info.arriveAirport;
+                                
+                                // 更新顯示名稱與主要時間
+                                item.name = `${info.code} ${type === 'departure' ? '去程' : '回程'}`;
+                                item.hours = info.departTime;
+                            }
+                        }
+                    });
+
+                    showModal.value = false; 
+                    showToast("航班資訊已更新並同步", "success");
                 };
 
-                const handleTranslationImageUpload = (e) => {
-                    const file = e.target.files[0];
-                    if (file) {
-                        const reader = new FileReader();
-                        reader.onload = (event) => {
-                            translationImage.value = event.target.result;
-                            // 自動開始翻譯
-                            performImageTranslation();
-                        };
-                        reader.readAsDataURL(file);
+                const saveFlightSummaryForm = () => { flightData.value = { ...flightSummaryForm.value }; showModal.value = false; };
+                const openAddCustomInfo = () => { modalMode.value = 'customInfo'; customInfoForm.value = { title: '', content: '' }; showModal.value = true; };
+                const saveCustomInfo = () => { customInfoList.value.push({ ...customInfoForm.value, id: Date.now() }); showModal.value = false; };
+                const deleteCustomInfo = (index) => { customInfoList.value.splice(index, 1); };
+                const editShoppingItem = (item, index) => { modalMode.value = 'shopping'; shoppingForm.value = { ...item }; editingShoppingIndex.value = index; showModal.value = true; };
+                const saveShoppingItem = () => { if (editingShoppingIndex.value !== null) { shoppingList.value[editingShoppingIndex.value] = { ...shoppingForm.value }; editingShoppingIndex.value = null; } else { shoppingList.value.push({...shoppingForm.value}); } closeModal(); };
+                
+                const editItem = (item) => { 
+                    modalMode.value = activeTab.value; 
+                    isEditing.value = true; 
+                    editingId.value = item.id; 
+                    form.value = {...item}; 
+                    showModal.value = true; 
+                };
+                
+                const closeModal = () => { showModal.value = false; showDeleteConfirm.value = false; editingShoppingIndex.value = null; };
+                
+                // === 修正：航班同步邏輯 (行程表 -> 資訊頁) ===
+                const saveItem = () => { 
+                    // 自動更新航班名稱與時間
+                    if (form.value.category === 'flight') {
+                        form.value.hours = form.value.departTime; // 同步顯示時間
+                        if (form.value.flightType) {
+                            const typeStr = form.value.flightType === 'departure' ? '去程' : '回程';
+                            form.value.name = `${form.value.flightCode} ${typeStr}`;
+                        }
                     }
-                    // Reset input
-                    e.target.value = '';
-                };
 
+                    const newItem = { ...form.value, dayIndex: currentDayIndex.value, id: isEditing.value ? editingId.value : Date.now() }; 
+                    
+                    if (!newItem.coords) newItem.coords = [35.6895, 139.6917]; 
+                    
+                    // 如果是編輯模式，更新該項目
+                    if(isEditing.value) { 
+                        const i = itineraryItems.value.findIndex(x=>x.id===editingId.value); 
+                        if(i!==-1) itineraryItems.value[i] = newItem; 
+                    } else { 
+                        itineraryItems.value.push(newItem); 
+                    } 
+                    
+                    // 同步回全域航班資料 (如果是航班類別)
+                    if (newItem.category === 'flight' && newItem.flightType) {
+                        const type = newItem.flightType;
+                        flightData.value[type] = {
+                            ...flightData.value[type], // 保留其他欄位
+                            code: newItem.flightCode,
+                            departTime: newItem.departTime,
+                            arriveTime: newItem.arriveTime,
+                            duration: newItem.flightDuration,
+                            departAirport: newItem.departAirport,
+                            arriveAirport: newItem.arriveAirport
+                        };
+                    }
+
+                    closeModal(); 
+                    if(isMapMode.value) nextTick(updateMapMarkers); 
+                };
+                
+                const confirmDelete = () => { showDeleteConfirm.value = true; };
+                const executeDelete = () => { if(modalMode.value === 'expenses') { manualExpenses.value = manualExpenses.value.filter(x => x.id !== expenseEditingId.value); } else { itineraryItems.value = itineraryItems.value.filter(x => x.id !== editingId.value); } closeModal(); if(isMapMode.value) nextTick(updateMapMarkers); };
+
+                // 補回的函式
                 const performImageTranslation = async () => {
                     if (!translationImage.value) return;
-                    
                     isTranslating.value = true;
-                    imageTranslationResult.value = null; // 清空舊結果
-
+                    imageTranslationResult.value = null; 
                     try {
                         const prompt = `請辨識這張圖片中的日文文字，並將其翻譯成繁體中文。請只回傳翻譯後的內容，如果文字很多，請分段呈現。如果圖片中沒有文字，請回傳「未偵測到文字」。`;
-                        
-                        // 呼叫支援圖片的 API
                         const result = await callGemini(prompt, translationImage.value);
-                        
                         if (result) {
                             imageTranslationResult.value = result;
                         } else {
@@ -1223,44 +1398,25 @@
 
                 const openGoogleTranslate = () => window.open(`https://translate.google.com/?sl=auto&tl=ja&text=${encodeURIComponent(translateInput.value)}`, '_blank');
                 
-                const openAddModal = () => { if (activeTab.value === 'expenses') { modalMode.value = 'expenses'; isEditingExpense.value = false; expenseForm.value = { category: '飲食', name: '', date: tripSettings.value.startDate, amount: '', payment: '現金', isSplit: false, splitMembers: [] }; } else { modalMode.value = activeTab.value; isEditing.value = false; form.value = { category: 'spot', name: '', hours: '', ticket: '', notes: '', cost: '', locationQuery: '', transportType: 'train', transportTime: '15分' }; } showModal.value = true; };
-                
-                const editShoppingItem = (item, index) => {
-                    modalMode.value = 'shopping';
-                    shoppingForm.value = { ...item };
-                    editingShoppingIndex.value = index;
-                    showModal.value = true;
+                // 補回 openAddModal 並確保它在 setup 返回之前正確定義
+                const openAddModal = () => { 
+                    if (activeTab.value === 'expenses') { 
+                        modalMode.value = 'expenses'; 
+                        isEditingExpense.value = false; 
+                        expenseForm.value = { category: '飲食', name: '', date: tripSettings.value.startDate, amount: '', payment: '現金', isSplit: false, splitMembers: [] }; 
+                    } else { 
+                        modalMode.value = activeTab.value; 
+                        isEditing.value = false; 
+                        form.value = { category: 'spot', name: '', hours: '', ticket: '', notes: '', cost: '', locationQuery: '', transportType: 'train', transportTime: '' }; 
+                    } 
+                    showModal.value = true; 
                 };
 
-                const saveShoppingItem = () => {
-                    if (editingShoppingIndex.value !== null) {
-                        shoppingList.value[editingShoppingIndex.value] = { ...shoppingForm.value };
-                        editingShoppingIndex.value = null;
-                    } else {
-                        shoppingList.value.push({...shoppingForm.value});
-                    }
-                    closeModal();
-                };
-
-                const editItem = (item) => { modalMode.value = activeTab.value; isEditing.value = true; editingId.value = item.id; form.value = {...item}; showModal.value = true; };
-                const closeModal = () => { showModal.value = false; showDeleteConfirm.value = false; editingShoppingIndex.value = null; };
-                const saveItem = () => { const newItem = { ...form.value, dayIndex: currentDayIndex.value, id: isEditing.value ? editingId.value : Date.now() }; if (!newItem.coords) newItem.coords = [35.6895, 139.6917]; if(isEditing.value) { const i = itineraryItems.value.findIndex(x=>x.id===editingId.value); if(i!==-1) itineraryItems.value[i] = newItem; } else { itineraryItems.value.push(newItem); } closeModal(); if(isMapMode.value) nextTick(updateMapMarkers); };
-                const confirmDelete = () => { showDeleteConfirm.value = true; };
-                const executeDelete = () => { if(modalMode.value === 'expenses') { manualExpenses.value = manualExpenses.value.filter(x => x.id !== expenseEditingId.value); } else { itineraryItems.value = itineraryItems.value.filter(x => x.id !== editingId.value); } closeModal(); if(isMapMode.value) nextTick(updateMapMarkers); };
-                const handleImageUpload = (e) => { const f=e.target.files[0]; if(f){ const r=new FileReader(); r.onload=(ev)=>shoppingForm.value.image=ev.target.result; r.readAsDataURL(f); } };
-                const openReservationModal = () => { modalMode.value = 'reservation'; reservationForm.value = { category: '交通', name: '', image: null, notes: '' }; showModal.value = true; };
-                const handleReservationImageUpload = (e) => { const f=e.target.files[0]; if(f){ const r=new FileReader(); r.onload=(ev)=>reservationForm.value.image=ev.target.result; r.readAsDataURL(f); } };
-                const saveReservation = () => { reservationList.value.push({...reservationForm.value}); showModal.value = false; };
-                const getReservationIcon = (c) => ({ '交通':'fa-train', '住宿':'fa-bed' }[c] || 'fa-file');
-                const openImagePreview = (url) => { if(url) { previewImageUrl.value = url; modalMode.value = 'imagePreview'; showModal.value = true; } };
-                const saveExpense = () => { const d = { ...expenseForm.value }; if (isEditingExpense.value) { if (expenseEditingSource.value === 'itinerary') { const idx = itineraryItems.value.findIndex(i => i.id === linkedItineraryId.value); if (idx !== -1) { itineraryItems.value[idx].cost = d.amount; itineraryItems.value[idx].splitMembers = d.splitMembers; } } else { const idx = manualExpenses.value.findIndex(e => e.id === expenseEditingId.value); if (idx !== -1) manualExpenses.value[idx] = { ...d, id: expenseEditingId.value }; } } else { manualExpenses.value.unshift({ ...d, id: Date.now() }); } closeModal(); };
-                const editExpense = (item) => { modalMode.value = 'expenses'; isEditingExpense.value = true; expenseEditingId.value = item.id; expenseForm.value = { ...item, splitMembers: item.splitMembers || [] }; expenseForm.isSplit = item.splitMembers?.length > 0; if (item.isFromItinerary) { expenseEditingSource.value = 'itinerary'; linkedItineraryId.value = item._rawId; } else { expenseEditingSource.value = 'manual'; linkedItineraryId.value = null; } showModal.value = true; };
-                const deleteExpense = () => { showDeleteConfirm.value = true; };
-                const openEditFlightSummary = () => { modalMode.value = 'editFlightSummary'; flightSummaryForm.value = JSON.parse(JSON.stringify(flightData.value)); showModal.value = true; };
-                const saveFlightSummary = () => { flightData.value = { ...flightSummaryForm.value }; showModal.value = false; };
-                const openAddCustomInfo = () => { modalMode.value = 'customInfo'; customInfoForm.value = { title: '', content: '' }; showModal.value = true; };
-                const saveCustomInfo = () => { customInfoList.value.push({ ...customInfoForm.value, id: Date.now() }); showModal.value = false; };
-                const deleteCustomInfo = (index) => { customInfoList.value.splice(index, 1); };
+                // 圖片翻譯相關功能
+                const triggerPhotoTranslation = () => { transFileInput.value.click(); };
+                const handleTranslationImageUpload = (e) => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onload = async (event) => { 
+                    translationImage.value = await compressImage(event.target.result); // 壓縮
+                    performImageTranslation(); }; reader.readAsDataURL(file); } e.target.value = ''; };
 
                 onMounted(() => { updateTime(); fetchExchangeRate(); setInterval(updateTime, 1000); });
 
@@ -1281,8 +1437,9 @@
                     apiKey, hasApiKey, setApiKey,
                     toast, showToast, openKeyModal, saveApiKey, tempApiKey, resetAllData,
                     exportData, triggerImport, handleFileImport, fileInput,
-                    // 圖片翻譯
-                    transFileInput, translationImage, imageTranslationResult, triggerPhotoTranslation, handleTranslationImageUpload
+                    transFileInput, translationImage, imageTranslationResult, triggerPhotoTranslation, handleTranslationImageUpload,
+                    // 新增回傳
+                    sortItemsByTime, calculateTimeGap, calculateSpacing, expenseStats
                 };
             }
         }).mount('#app');
